@@ -61,6 +61,22 @@ holds every entry until the dispatcher starts polling, which happens once per ap
 after VanillaBP deployed. An application which builds its own `TransactionOutbox` bean has to keep
 that submitter, and `GruelboxHoldsEntriesBackUntilDispatchingStartedTest` is where the promise lives.
 
+## The extension double exists twice
+
+`SampleExtension` under `io/vanillabp/outbox/gruelbox/it` is a copy. The platform has one of the same
+name, in a test module of its own which is not published, so a repository outside the platform cannot
+depend on it. Two tests here need such a double: one operation which says it replaces what is still
+waiting, a dispatch which can be rejected with a window, and a dispatch which can be held while a test
+plans against a claimed entry.
+
+Keeping it as a copy is the decision (Stephan, 2026-09-28): inside VanillaBP what belongs to VanillaBP
+is tested, inside this repository only that the contract is kept, and a copy lets the two move at their
+own speed. The price is that a change to one of the two does not reach the other, so whoever changes
+this one reads the platform's before deciding whether the difference is on purpose. The copy is already
+smaller than the platform's: the half which invokes an annotated method through `ExtensionHandlers`
+needs the platform's sample extension and stayed there, and here a dispatch writes into the workflow
+aggregate through its repository instead.
+
 ## How we write
 
 Most people who read this code read English as a second language. A sentence they have to read twice

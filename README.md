@@ -41,14 +41,15 @@ All modules are `1.0.0-SNAPSHOT`, groupId `io.vanillabp`. The version line is th
 an upgrade of gruelbox must not drag the platform's release with it, and a release of the platform
 must not wait for this store.
 
-|     Module     |                Artifact                 |               Purpose                |
-|----------------|-----------------------------------------|--------------------------------------|
-| `spring-boot/` | `gruelbox-phase-two-outbox-spring-boot` | the store and its auto-configuration |
+One module and one artifact: `spring-boot/` builds `io.vanillabp:gruelbox-phase-two-outbox`, which is
+the store together with its auto-configuration. The directory says which platform the code inside is
+for, and there will be no second one, because gruelbox enlists an entry through the Spring transaction
+manager.
 
 ```xml
 <dependency>
   <groupId>io.vanillabp</groupId>
-  <artifactId>gruelbox-phase-two-outbox-spring-boot</artifactId>
+  <artifactId>gruelbox-phase-two-outbox</artifactId>
   <version>1.0.0-SNAPSHOT</version>
 </dependency>
 ```
@@ -84,13 +85,22 @@ vanillabp:
 ```
 
 The key exists for an application which cannot take the dependency out - a second artifact of its
-own pulls it in, or a release is not worth cutting for it. With `false` the entries go into
-VanillaBP's own table `VANILLABP_PHASE_TWO_OUTBOX`, and what is left in `TXNO_OUTBOX` is reported at
-the next startup, so drain the table before you switch.
+own pulls it in, or a release is not worth cutting for it. With `false` the store VanillaBP writes
+itself takes over, so the entries go into `VANILLABP_PHASE_TWO_OUTBOX`, and what is left in
+`TXNO_OUTBOX` is reported at the next startup: drain the table before you switch.
 
-An application which sets the key to `true` without having this artifact does not boot. VanillaBP
-says so and names the artifact, because the alternative is an application writing its entries into
-another table than the one it still has work waiting in.
+So the whole rule is two lines. The artifact is what asks for this store. `false`, or no artifact at
+all, hands the entries to the store VanillaBP writes itself.
+
+`vanillabp.outbox.jdbc.enabled=false` is the third answer and means what it always meant: no
+relational outbox at all, this one included. It is for an application which keeps its phase-two
+entries somewhere VanillaBP does not manage.
+
+The key belongs to this artifact and is read by it alone. An application which writes it without
+having this artifact writes a line nothing reads: VanillaBP's own store serves, the start does not
+stop and nobody is told, because a property of an artifact which is not there has nothing to say. What
+VanillaBP does say in that case is what is left undispatched in `TXNO_OUTBOX`, which it says at every
+start until the table is empty.
 
 ## What this store does not do
 

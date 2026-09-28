@@ -8,7 +8,7 @@
     <version>1.0.0-SNAPSHOT</version>
   </parent>
 
-  <artifactId>gruelbox-phase-two-outbox-spring-boot</artifactId>
+  <artifactId>gruelbox-phase-two-outbox</artifactId>
   <name>VanillaBP phase-two outbox on gruelbox - Spring Boot</name>
   <description>Spring Boot auto-configuration of the phase-two outbox backed by the gruelbox transaction outbox, which takes the place of the store VanillaBP writes itself.</description>
 

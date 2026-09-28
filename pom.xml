@@ -136,7 +136,7 @@
       <!-- Own modules -->
       <dependency>
         <groupId>io.vanillabp</groupId>
-        <artifactId>gruelbox-phase-two-outbox-spring-boot</artifactId>
+        <artifactId>gruelbox-phase-two-outbox</artifactId>
         <version>${project.version}</version>
       </dependency>
 
