@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.vanillabp</groupId>
+    <artifactId>gruelbox-phase-two-outbox-test-coverage-report</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>gruelbox-phase-two-outbox-spring-boot-report</artifactId>
+  <packaging>pom</packaging>
+  <name>VanillaBP phase-two outbox on gruelbox - Test coverage report - Spring Boot</name>
+  <description>Aggregated test coverage of the store and of its Spring Boot auto-configuration.</description>
+
+  <properties>
+    <!-- a report is published on GitHub Pages and never to Maven Central: the property is
+         what the release-parent's central-publishing plugin reads -->
+    <skip.central.release>true</skip.central.release>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.vanillabp</groupId>
+      <artifactId>gruelbox-phase-two-outbox-spring-boot</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <artifactId>maven-deploy-plugin</artifactId>
+        <version>3.2.0</version>
+        <configuration>
+          <!-- nothing to deploy - report is published on Github pages -->
+          <skip>true</skip>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>${jacoco.version}</version>
+        <executions>
+          <execution>
+            <goals>
+              <!-- 'report-aggregate' sums up all '*.exec' files found in the modules listed in <dependencies> into one report -->
+              <goal>report-aggregate</goal>
+            </goals>
+            <phase>verify</phase>
+            <configuration>
+              <outputDirectory>${project.basedir}/report</outputDirectory>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

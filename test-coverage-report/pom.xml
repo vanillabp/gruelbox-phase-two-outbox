@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.vanillabp</groupId>
+    <artifactId>gruelbox-phase-two-outbox-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>gruelbox-phase-two-outbox-test-coverage-report</artifactId>
+  <packaging>pom</packaging>
+  <name>VanillaBP phase-two outbox on gruelbox - Test coverage report</name>
+  <description>Aggregator of the test coverage report. There is one platform to measure here, because gruelbox needs the Spring transaction manager and this store therefore exists on Spring Boot alone.</description>
+
+  <modules>
+    <module>spring-boot</module>
+    <!-- last: it judges the report the module above produced -->
+    <module>coverage-gate</module>
+  </modules>
+
+  <properties>
+    <!-- a report is published on GitHub Pages and never to Maven Central: the property is
+         what the release-parent's central-publishing plugin reads -->
+    <skip.central.release>true</skip.central.release>
+  </properties>
+
+  <build>
+    <plugins>
+      <plugin>
+        <artifactId>maven-deploy-plugin</artifactId>
+        <version>3.2.0</version>
+        <configuration>
+          <!-- nothing to deploy - reports are published on Github pages -->
+          <skip>true</skip>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
