@@ -1,0 +1,354 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <!-- brings the plugins and the two profiles a release to Maven Central needs
+       (sources, javadoc, GPG signature, the central-publishing plugin) -->
+  <parent>
+    <groupId>io.vanillabp</groupId>
+    <artifactId>release-parent</artifactId>
+    <version>1.2.1</version>
+  </parent>
+
+  <groupId>io.vanillabp</groupId>
+  <artifactId>gruelbox-phase-two-outbox-parent</artifactId>
+  <version>1.0.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>VanillaBP phase-two outbox on gruelbox</name>
+  <description>An implementation of VanillaBP's PhaseTwoOutbox which stores the phase-two calls of a Spring Boot application in the gruelbox transaction outbox instead of the table VanillaBP writes itself.</description>
+  <url>https://www.vanillabp.io</url>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <id>VanillaBP</id>
+      <organization>Phactum Softwareentwicklung GmbH</organization>
+      <organizationUrl>https://www.phactum.at</organizationUrl>
+    </developer>
+  </developers>
+
+  <modules>
+    <module>spring-boot</module>
+    <module>test-coverage-report</module>
+  </modules>
+
+  <scm>
+    <connection>scm:git:https://github.com/vanillabp/gruelbox-phase-two-outbox.git</connection>
+    <developerConnection>scm:git:https://github.com/vanillabp/gruelbox-phase-two-outbox.git</developerConnection>
+    <url>http://github.com/vanillabp/gruelbox-phase-two-outbox/tree/main</url>
+  </scm>
+
+  <distributionManagement>
+    <snapshotRepository>
+      <id>github</id>
+      <name>Github Packages</name>
+      <url>https://maven.pkg.github.com/vanillabp/gruelbox-phase-two-outbox</url>
+    </snapshotRepository>
+  </distributionManagement>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <version.java>21</version.java>
+    <jacoco.version>0.8.15</jacoco.version>
+    <!-- where the build breaks, in PERCENT of covered instructions, enforced by
+         test-coverage-report/coverage-gate. The rule stays 90, which is the number the
+         coverage badge of the README is read against. The gate stands at 85, the same
+         number in every VanillaBP repository, because a threshold marks the point where
+         somebody has to look and not the goal to aim at. It is never raised to whatever a
+         suite happens to reach, and never lowered to make a build pass. Only Spring Boot
+         is measured here: gruelbox needs the Spring transaction manager, so this store
+         exists on one platform and there is no second number to keep apart. -->
+    <coverage.threshold.spring-boot>85</coverage.threshold.spring-boot>
+    <!-- the rule, as a number the gate can print: it reports every run against both, so
+         the distance between a passing build and the rule is readable without opening
+         the report -->
+    <coverage.rule>90</coverage.rule>
+    <lombok.version>1.18.48</lombok.version>
+    <adapter-platform.version>2.0.0-SNAPSHOT</adapter-platform.version>
+    <!-- the version the store is compiled and tested against, see the compatibility
+         table in README.md -->
+    <transaction-outbox.version>7.1.750</transaction-outbox.version>
+    <spring-boot.version>4.1.1</spring-boot.version>
+    <mockito.version>5.23.0</mockito.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- Platform -->
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-dependencies</artifactId>
+        <version>${spring-boot.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <!-- the store itself. Two artifacts: the outbox and the glue which enlists an
+           entry in a Spring-managed transaction -->
+      <dependency>
+        <groupId>com.gruelbox</groupId>
+        <artifactId>transactionoutbox-core</artifactId>
+        <version>${transaction-outbox.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.gruelbox</groupId>
+        <artifactId>transactionoutbox-spring</artifactId>
+        <version>${transaction-outbox.version}</version>
+      </dependency>
+
+      <!-- VanillaBP SPI + Spring Boot integration -->
+      <dependency>
+        <groupId>io.vanillabp</groupId>
+        <artifactId>vanillabp-integration-spi</artifactId>
+        <version>${adapter-platform.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.vanillabp</groupId>
+        <artifactId>vanillabp-spring-boot-integration</artifactId>
+        <version>${adapter-platform.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.vanillabp.adapter</groupId>
+        <artifactId>migration-adapter</artifactId>
+        <version>${adapter-platform.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.vanillabp</groupId>
+        <artifactId>test-utils</artifactId>
+        <version>${adapter-platform.version}</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>io.vanillabp</groupId>
+        <artifactId>bpms-double-spring-boot</artifactId>
+        <version>${adapter-platform.version}</version>
+        <scope>test</scope>
+      </dependency>
+
+      <!-- Own modules -->
+      <dependency>
+        <groupId>io.vanillabp</groupId>
+        <artifactId>gruelbox-phase-two-outbox</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.mockito</groupId>
+        <artifactId>mockito-core</artifactId>
+        <version>${mockito.version}</version>
+        <scope>test</scope>
+      </dependency>
+
+      <!-- 'provided' here and again at every declaration below: Lombok translates the
+           source and has no work left once the class file exists, so no application using
+           our artifacts may find it on its runtime classpath. Writing 'optional' here did
+           not do that. Maven copies a managed version, scope and exclusions into a
+           dependency, but not the optional flag, so the POMs we publish said nothing. -->
+      <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <version>${lombok.version}</version>
+        <scope>provided</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>3.6.0</version>
+          <configuration>
+            <!-- '@{jacoco.agent}' is resolved lazily per module (late property binding),
+                 forwarding coverage also into forked JVMs -->
+            <argLine>@{jacoco.agent}</argLine>
+            <!-- the classes of one module share a JVM, and Spring keeps every test context
+                 until that JVM exits: what ran before is still running. A fixed order is
+                 what makes the runner's result reproducible on a developer machine -->
+            <runOrder>alphabetical</runOrder>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-failsafe-plugin</artifactId>
+          <version>3.6.0</version>
+          <configuration>
+            <argLine>@{jacoco.agent}</argLine>
+            <runOrder>alphabetical</runOrder>
+          </configuration>
+          <executions>
+            <execution>
+              <goals>
+                <goal>integration-test</goal>
+                <goal>verify</goal>
+              </goals>
+            </execution>
+          </executions>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.16.0</version>
+          <configuration>
+            <release>${version.java}</release>
+            <compilerArgs>
+              <!-- javac reads every comment, down to a private field, and a link which
+                   no longer resolves fails the build. The javadoc plugin stops at
+                   protected, because that is what the published documentation shows, so
+                   this switch is what reads the rest. 'missing' is left out: a comment
+                   which was never written is a warning and not a defect. -->
+              <arg>-Xdoclint:all,-missing</arg>
+            </compilerArgs>
+            <annotationProcessorPaths>
+              <path>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+              </path>
+            </annotationProcessorPaths>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-javadoc-plugin</artifactId>
+          <configuration>
+            <!-- a warning fails the build here. What this repository publishes is read by
+                 the team which plugs the store in and by nobody else, so a comment nobody
+                 wrote is a gap for exactly the reader who has no other source. The gaps
+                 here were written once, and a warning which passes parks the next one in a
+                 build which looks green. Everything else about the check comes from the
+                 parent. -->
+            <failOnWarnings>true</failOnWarnings>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+    <plugins>
+      <!-- the sources jar every build attaches. The parent binds this plugin in its
+           'release' profile alone, and a snapshot is deployed without that profile, so
+           the snapshots of a repository carried no sources and an IDE showed decompiled
+           code to everyone developing against one. The version and the configuration
+           still come from the parent, only the binding is here. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>${jacoco.version}</version>
+        <configuration>
+          <propertyName>jacoco.agent</propertyName>
+          <excludes>
+            <exclude>**/it/**</exclude>
+            <exclude>**/test/**</exclude>
+          </excludes>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <goals>
+              <goal>report</goal>
+            </goals>
+            <phase>verify</phase>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <version>3.10.2</version>
+        <configuration>
+          <pom>
+            <includes>
+              <include>**/pom.xml</include>
+            </includes>
+            <excludes>
+              <exclude>**/target/**/</exclude>
+              <exclude>**/node_modules/**/</exclude>
+              <!-- the workflows carry comments, and the YAML formatter round-trips
+                   through Jackson, which drops them -->
+              <exclude>**/.github/**/</exclude>
+            </excludes>
+            <sortPom>
+              <quiet>true</quiet>
+            </sortPom>
+          </pom>
+          <markdown>
+            <includes>
+              <include>**/*.md</include>
+            </includes>
+            <excludes>
+              <exclude>**/target/**/</exclude>
+              <exclude>**/node_modules/**/</exclude>
+              <!-- the workflows carry comments, and the YAML formatter round-trips
+                   through Jackson, which drops them -->
+              <exclude>**/.github/**/</exclude>
+            </excludes>
+            <flexmark/>
+          </markdown>
+          <yaml>
+            <includes>
+              <include>**/*.yaml</include>
+            </includes>
+            <excludes>
+              <exclude>**/target/**/</exclude>
+              <exclude>**/node_modules/**/</exclude>
+              <!-- the workflows carry comments, and the YAML formatter round-trips
+                   through Jackson, which drops them -->
+              <exclude>**/.github/**/</exclude>
+            </excludes>
+            <jackson>
+              <yamlFeatures>
+                <MINIMIZE_QUOTES>true</MINIMIZE_QUOTES>
+                <WRITE_DOC_START_MARKER>false</WRITE_DOC_START_MARKER>
+                <INDENT_ARRAYS_WITH_INDICATOR>true</INDENT_ARRAYS_WITH_INDICATOR>
+              </yamlFeatures>
+            </jackson>
+          </yaml>
+          <java>
+            <eclipse>
+              <file>${maven.multiModuleProjectDirectory}/formatting_conventions.xml</file>
+              <version>4.35</version>
+            </eclipse>
+            <removeUnusedImports/>
+            <importOrder>
+              <order>java,javax,org,com,at.phactum</order>
+            </importOrder>
+          </java>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <phase>process-sources</phase>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

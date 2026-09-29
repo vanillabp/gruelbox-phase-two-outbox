@@ -1,0 +1,32 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:outbox-it;DB_CLOSE_DELAY=-1
+  jpa:
+    hibernate:
+      ddl-auto: create
+dummy-adapter:
+  at-least-once-delivery: true
+vanillabp:
+  adapters:
+    test:
+      type: dummy
+      test: 1
+  workflow-modules:
+    test-module:
+      adapters:
+        test:
+          resources-location: classpath*:test-module/processes/dummy
+      workflows:
+        SampleWorkflowService:
+          allow-full-sync-with-bpms: true
+          declared-aggregate-values:
+            - '*'
+  outbox:
+    poll-interval: PT0.5S
+    attempt-frequency: PT0.5S
+    housekeeping:
+      start: 00:01
+      end: 00:00
+      zone: Europe/Vienna
+test-module:
+  nothing: there

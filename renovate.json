@@ -1,0 +1,19 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["github>vanillabp/renovate-config"],
+  "timezone": "Europe/Vienna",
+  "packageRules": [
+    {
+      "description": "VanillaBP itself follows the framework, not Renovate: its versions are bumped when a release is cut, and while they are snapshots there is nothing to look up.",
+      "matchPackageNames": ["/^io\\.vanillabp/"],
+      "enabled": false
+    },
+    {
+      "description": "gruelbox owns the table and the dispatch this store is built on, and the README names the version it was tested against. A minor or major upgrade can change what its retry policy or its schema does, so it comes as a PR to look at and to carry into the README.",
+      "matchPackageNames": ["com.gruelbox:*"],
+      "matchUpdateTypes": ["minor", "major"],
+      "automerge": false,
+      "addLabels": ["needs-doc-update"]
+    }
+  ]
+}
