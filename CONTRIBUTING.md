@@ -139,6 +139,10 @@ from a branch. A red check is a finding about your change. Read the log and fix 
 than pushing again to see whether it goes away. Releases are a second workflow, started by hand with
 the version to release, and it refuses to run while a POM still names a SNAPSHOT.
 
+`main` carries a ruleset, and it requires two green checks before a merge: `publish`, which is the
+build of *Publish to GitHub Packages*, and `orphaned-javadoc-check`, which is the *Checks* workflow
+running the script named above. While one of them is red, GitHub does not offer the merge.
+
 ## License
 
 VanillaBP is published under the [Apache License, Version 2.0](./LICENSE), and by contributing you
