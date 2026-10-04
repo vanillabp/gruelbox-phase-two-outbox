@@ -69,10 +69,11 @@ public class ARejectedDispatchOnGruelboxIsPlannedAgainTest {
 
   /**
    * The window a rejected dispatch names in the second test. It says how long the entry
-   * stays away, and on this store it says it together with
-   * <code>vanillabp.outbox.attempt-frequency</code>: gruelbox writes its own distance onto
-   * the row and a rejection only ever shortens it, so both have to outlast the test. The
-   * entry comes back when the test makes it due, not when this passes.
+   * stays away. gruelbox first writes its own distance onto the row, and the listener then
+   * writes this window over it, whether it is shorter or longer. The test sets
+   * <code>vanillabp.outbox.attempt-frequency</code> to the same five minutes, so the entry
+   * stays away even where the write of the window fails. The entry comes back when the test
+   * makes it due, not when this passes.
    */
   private static final Duration LONGER_THAN_THIS_TEST_CAN_TAKE = Duration.ofMinutes(5);
 

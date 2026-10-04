@@ -49,8 +49,8 @@ import lombok.extern.slf4j.Slf4j;
  * of a Camunda 8 cluster were asked for. Gruelbox has just written its own distance onto the
  * row, and this listener writes the adapter's window over it, whether that window is the
  * closer of the two or the farther one. The adapter knows something about its BPMS which no
- * store knows, so its window means the same thing on every store VanillaBP ships (see
- * {@code DECISIONS.pending/902.md}). Nothing waits on the dispatching thread for it,
+ * store knows, so its window means the same thing on every store VanillaBP ships
+ * (see decision 4 in the repository's DECISIONS.md). Nothing waits on the dispatching thread for it,
  * which is the whole difference to how this store used to answer that case (see
  * {@link GruelboxPhaseTwoDispatchBean}).
  * <p>
@@ -61,8 +61,8 @@ import lombok.extern.slf4j.Slf4j;
  * once <code>vanillabp.outbox.wait-for-visibility-at-most</code> passed since the entry was
  * written, the next answer "not yet" blocks the entry, and that block keeps the one attempt
  * gruelbox counted. {@link PhaseTwoOutboxProperties#hasWaitedForVisibilityLongEnough} is the
- * rule, the same one the stores VanillaBP writes itself ask. See
- * {@code DECISIONS.pending/902.md}.
+ * rule, the same one the stores VanillaBP writes itself ask.
+ * See decision 4 in the repository's DECISIONS.md.
  * <p>
  * Gruelbox has no column for the moment an entry was written, so this listener puts that
  * moment into the session of the stored invocation when the entry is written
