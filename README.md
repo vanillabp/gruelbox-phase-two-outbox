@@ -102,6 +102,25 @@ stop and nobody is told, because a property of an artifact which is not there ha
 VanillaBP does say in that case is what is left undispatched in `TXNO_OUTBOX`, which it says at every
 start until the table is empty.
 
+## Waiting for a BPMS which is behind
+
+A BPMS may not report a workflow yet, for example a Camunda 8 cluster whose exporter is behind. The
+adapter then answers "not yet" and names a window. This store treats that answer the way the stores
+VanillaBP writes itself do. The entry is due again after the window, and the answer uses no attempt
+of `vanillabp.outbox.block-after-attempts`, because a read model which is behind is no failure of
+the entry. What ends a wait which never ends is time: once `vanillabp.outbox.wait-for-visibility-at-most`
+passed since the entry was written, the next "not yet" blocks the entry with an ERROR which names
+that key. Not set, it is the time the attempts of `vanillabp.outbox.block-after-attempts` take with
+the growing backoff of the stores VanillaBP writes itself: 3 hours and 52.5 minutes with the
+defaults.
+
+gruelbox counts every failed attempt itself. VanillaBP's listener on the outbox takes the attempt
+back in the same write which sets the window. gruelbox also has no column for the moment an entry
+was written, so the listener stores that moment in the session gruelbox keeps with every call. Two
+kinds of entry have no such moment: one written by an earlier version of this artifact, and one
+written by an outbox built without VanillaBP's listener. For them the answer "not yet" still counts
+as an attempt, and the attempt budget ends the wait. No entry is lost either way.
+
 ## What this store does not do
 
 The stores VanillaBP writes itself own their table, their dispatch and their retry policy. This one
@@ -164,7 +183,9 @@ of them. The names are constants of `GruelboxPhaseTwoOutboxAutoConfiguration`, a
 knowing is `vanillaBpTransactionOutbox`: a bean of that name is the `TransactionOutbox` this store
 uses, which is how an application gets another table name, another dialect or a listener of its own.
 Its submitter has to stay the one this configuration builds, because that submitter is what holds an
-entry back until VanillaBP has deployed its models.
+entry back until VanillaBP has deployed its models. Its listener has to include
+`GruelboxPhaseTwoFailureListener`, chained with your own by `andThen`. Without it a permanent failure
+is attempted until the budget is used up, and waiting for a BPMS counts attempts again.
 
 ## Contributing
 

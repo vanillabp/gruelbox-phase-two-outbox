@@ -172,32 +172,32 @@ public class ARejectedDispatchOnGruelboxIsPlannedAgainTest {
   }
 
   /**
-   * How often gruelbox counted an attempt on the entry of that operation, and zero where
-   * no entry carries that key.
+   * Whether gruelbox wrote down an attempt on the entry of that operation. It stamps the
+   * time of the last attempt when the attempt ENDED. The count of attempts says nothing
+   * here, because the answer "not yet" is taken back from it.
    */
-  private int attemptsOf(
+  private boolean wasAttempted(
       final String idempotencyKey) throws SQLException {
 
     try (var connection = dataSource.getConnection(); var statement = connection
-        .prepareStatement("SELECT attempts FROM %s WHERE uniqueRequestId = ?".formatted(TABLE))) {
+        .prepareStatement("SELECT lastAttemptTime FROM %s WHERE uniqueRequestId = ?".formatted(TABLE))) {
       statement.setString(1, idempotencyKey);
       try (var resultSet = statement.executeQuery()) {
-        return resultSet.next() ? resultSet.getInt(1) : 0;
+        return resultSet.next() && (resultSet.getTimestamp(1) != null);
       }
     }
 
   }
 
   /**
-   * Waits until gruelbox counted an attempt on that entry. It writes the count when the
-   * attempt ENDED, so this is what says that a rejection was used up and which entry used
-   * it.
+   * Waits until gruelbox wrote down an attempt on that entry, which is what says that a
+   * rejection was used up and which entry used it.
    */
   private void awaitAttempted(
       final String idempotencyKey) throws Exception {
 
     final var deadline = System.currentTimeMillis() + PATIENCE;
-    while (attemptsOf(idempotencyKey) == 0) {
+    while (!wasAttempted(idempotencyKey)) {
       if (System.currentTimeMillis() > deadline) {
         throw new AssertionError(
             "The outbox entry of '%s' was never attempted".formatted(idempotencyKey));
@@ -274,8 +274,8 @@ public class ARejectedDispatchOnGruelboxIsPlannedAgainTest {
     extension.rejectNextDispatches(1, LONGER_THAN_THIS_TEST_CAN_TAKE);
 
     final var waiting = startWorkflowAndSchedule("not-searchable-yet", "created");
-    // the rejection belongs to this workflow, and the store counting the attempt is what
-    // says so. Scheduling the second workflow before that could hand the rejection to it
+    // the rejection belongs to this workflow, and the store writing down the attempt is
+    // what says so. Scheduling the second workflow before that could hand the rejection to it
     awaitAttempted(idempotencyKeyOf(waiting, "created"));
     final var passing = startWorkflowAndSchedule("searchable", "created");
 

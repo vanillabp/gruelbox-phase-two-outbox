@@ -25,6 +25,7 @@ import com.gruelbox.transactionoutbox.Persistor;
 import com.gruelbox.transactionoutbox.TransactionOutboxEntry;
 import com.gruelbox.transactionoutbox.spring.SpringTransactionManager;
 
+import io.vanillabp.integration.adapter.migration.config.PhaseTwoOutboxProperties;
 import io.vanillabp.integration.adapter.migration.observability.VanillaBpMetrics;
 import io.vanillabp.integration.spi.PhaseOperation;
 import io.vanillabp.integration.spi.PhaseTwoPermanentFailure;
@@ -92,7 +93,10 @@ public class AWriteWhichFailsLeavesTheEntryAsGruelboxWroteItTest {
     final var persistor = mock(Persistor.class);
     doThrow(new java.sql.SQLException("the database is away")).when(persistor).update(any(), any());
     return new GruelboxPhaseTwoFailureListener(
-        persistor, transactionManager, () -> VanillaBpMetrics.NONE, ATTEMPT_BUDGET);
+        persistor, transactionManager, () -> VanillaBpMetrics.NONE, PhaseTwoOutboxProperties
+            .builder()
+            .blockAfterAttempts(ATTEMPT_BUDGET)
+            .build());
 
   }
 
