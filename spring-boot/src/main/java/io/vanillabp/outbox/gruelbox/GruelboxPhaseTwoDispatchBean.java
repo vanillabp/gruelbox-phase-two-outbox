@@ -35,9 +35,10 @@ import io.vanillabp.integration.spi.PhaseTwoRetryLater;
  * What the entry costs instead is one due time. Gruelbox has one distance for the whole
  * outbox, so the window the adapter named is written onto the row by
  * {@link GruelboxPhaseTwoFailureListener} once the failed attempt is committed - the same
- * way a permanent failure is blocked there. The attempt is counted like any other, and
- * <code>vanillabp.outbox.block-after-attempts</code> of them still block the entry, which
- * is what ends a workflow which never becomes visible.
+ * way a permanent failure is blocked there. The listener takes back the attempt gruelbox
+ * counted, because waiting for a BPMS is no failure of the entry. What ends a workflow which
+ * never becomes visible is <code>vanillabp.outbox.wait-for-visibility-at-most</code>,
+ * counted from the moment the entry was written.
  * <p>
  * Asking the BPMS again on the spot is what this does NOT do. The attempt is not alone in
  * its transaction, so a second try inside it would either repeat work the first one had

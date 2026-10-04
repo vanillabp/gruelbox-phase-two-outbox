@@ -88,7 +88,9 @@ import jakarta.persistence.EntityManagerFactory;
  * VanillaBP's ({@link GruelboxPhaseTwoFailureListener}), which also gives a blocked entry
  * an ERROR naming the workflow instead of only the entry id. That same listener writes the
  * short due time of a workflow which is not searchable yet, because gruelbox schedules
- * every failed attempt from the one distance it knows. Two things this store cannot do and
+ * every failed attempt from the one distance it knows. It also takes back the attempt
+ * gruelbox counted for such an answer, and blocks the entry once
+ * <code>vanillabp.outbox.wait-for-visibility-at-most</code> passed. Two things this store cannot do and
  * the own stores can: its retry policy knows ONE fixed distance, so
  * <code>max-attempt-frequency</code> and the doubling it caps have no effect here, and a
  * blocklisted entry holds its <code>uniqueRequestId</code> until the row is removed, so the
@@ -243,8 +245,7 @@ public class GruelboxPhaseTwoOutboxAutoConfiguration {
         .instantiator(new SpringInstantiator(applicationContext))
         .persistor(persistor)
         .listener(
-            outboxListener(
-                persistor, transactionManager, metrics, applicationListeners, properties.getBlockAfterAttempts()))
+            outboxListener(persistor, transactionManager, metrics, applicationListeners, properties))
         // carries "this entry was attempted before" to the dispatch bean and keeps
         // entries until VanillaBP dispatches (see the submitter's javadoc)
         .submitter(submitter)
@@ -266,8 +267,9 @@ public class GruelboxPhaseTwoOutboxAutoConfiguration {
    * @param transactionManager The transaction manager of this outbox
    * @param metrics Provider of what a blocked entry is counted into
    * @param applicationListeners The listeners the application brings
-   * @param blockAfterAttempts The attempt budget of this outbox, which the listener names
-   *          when it says how soon a rejected entry comes back
+   * @param properties The settings of <code>vanillabp.outbox</code>: the attempt budget,
+   *          and how long an entry may wait for a BPMS which does not report its workflow
+   *          yet
    * @return The listener to hand to the outbox
    */
   private static TransactionOutboxListener outboxListener(
@@ -275,11 +277,11 @@ public class GruelboxPhaseTwoOutboxAutoConfiguration {
       final SpringTransactionManager transactionManager,
       final ObjectProvider<VanillaBpMetrics> metrics,
       final ObjectProvider<TransactionOutboxListener> applicationListeners,
-      final int blockAfterAttempts) {
+      final PhaseTwoOutboxProperties properties) {
 
     TransactionOutboxListener listener = new GruelboxPhaseTwoFailureListener(
         persistor, transactionManager, () -> SpringBootMigrationAdapterAutoConfiguration
-            .vanillaBpMetricsOf(metrics), blockAfterAttempts);
+            .vanillaBpMetricsOf(metrics), properties);
     for (final var applicationListener : applicationListeners) {
       listener = listener.andThen(applicationListener);
     }

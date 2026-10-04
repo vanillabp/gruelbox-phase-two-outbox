@@ -29,6 +29,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import io.vanillabp.integration.adapter.migration.config.PhaseTwoOutboxProperties;
 import io.vanillabp.integration.adapter.migration.observability.VanillaBpMetrics;
 import io.vanillabp.integration.spi.PhaseOperation;
 import io.vanillabp.integration.spi.PhaseTwoPermanentFailure;
@@ -116,7 +117,8 @@ public class GruelboxBlocksAPermanentFailureTest {
 
   private GruelboxPhaseTwoFailureListener listener() {
 
-    return new GruelboxPhaseTwoFailureListener(persistor, transactionManager, () -> blocked, 50);
+    return new GruelboxPhaseTwoFailureListener(
+        persistor, transactionManager, () -> blocked, new PhaseTwoOutboxProperties());
 
   }
 

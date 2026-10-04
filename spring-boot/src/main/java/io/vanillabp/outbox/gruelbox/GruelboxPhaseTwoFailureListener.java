@@ -1,9 +1,12 @@
 package io.vanillabp.outbox.gruelbox;
 
 import java.lang.reflect.Method;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.function.Supplier;
 
 import com.gruelbox.transactionoutbox.Persistor;
@@ -18,10 +21,11 @@ import io.vanillabp.integration.spi.PhaseTwoRetryLater;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Makes the gruelbox store keep the three promises the stores VanillaBP writes itself
+ * Makes the gruelbox store keep the four promises the stores VanillaBP writes itself
  * keep: an entry whose failure the adapter called permanent is blocked after the first
- * attempt, the ERROR which reports a blocked entry says which workflow was lost, and an
- * entry which cannot run YET is due when the adapter said it would be.
+ * attempt, the ERROR which reports a blocked entry says which workflow was lost, an entry
+ * which cannot run YET is due when the adapter said it would be, and waiting for that
+ * uses time and not attempts.
  * <p>
  * Gruelbox counts attempts and blocks an entry once
  * <code>vanillabp.outbox.block-after-attempts</code> of them are used up, and it knows
@@ -45,10 +49,36 @@ import lombok.extern.slf4j.Slf4j;
  * of a Camunda 8 cluster were asked for. Gruelbox has just written its own distance onto the
  * row, and this listener writes the adapter's window over it, whether that window is the
  * closer of the two or the farther one. The adapter knows something about its BPMS which no
- * store knows, so its window means the same thing on every store VanillaBP ships (decision
- * 93 in the repository's DECISIONS.md). Nothing waits on the dispatching thread for it,
+ * store knows, so its window means the same thing on every store VanillaBP ships
+ * (see decision 4 in the repository's DECISIONS.md). Nothing waits on the dispatching thread for it,
  * which is the whole difference to how this store used to answer that case (see
  * {@link GruelboxPhaseTwoDispatchBean}).
+ * <p>
+ * Waiting for a BPMS which does not report the workflow yet is no failure of the entry, so
+ * it must not use up <code>vanillabp.outbox.block-after-attempts</code>. Gruelbox has
+ * already counted the attempt when it calls here, so this listener takes it back in the
+ * same write which sets the window. What ends a wait which never ends is time instead:
+ * once <code>vanillabp.outbox.wait-for-visibility-at-most</code> passed since the entry was
+ * written, the next answer "not yet" blocks the entry, and that block keeps the one attempt
+ * gruelbox counted. {@link PhaseTwoOutboxProperties#hasWaitedForVisibilityLongEnough} is the
+ * rule, the same one the stores VanillaBP writes itself ask.
+ * See decision 4 in the repository's DECISIONS.md.
+ * <p>
+ * Gruelbox has no column for the moment an entry was written, so this listener puts that
+ * moment into the session of the stored invocation when the entry is written
+ * ({@link #extractSession()}). That map is gruelbox' place for what an add-on stores next to
+ * a call, so no column is added. An entry which carries no moment was written before this
+ * listener wrote one, or by an outbox built without it. Such an entry keeps the old rule:
+ * the answer counts as an attempt, and the attempt budget ends the wait. Nothing is lost
+ * either way, it only ends by the other budget.
+ * <p>
+ * Where gruelbox blocked the entry because the attempt it just counted was the last one of
+ * the budget, and the wait is not over yet, this listener opens the entry again: the answer
+ * is looked at before the budget, as on the other stores. Gruelbox decided about the block
+ * before it called here, so it still writes its own ERROR line "Blocking failing entry" and
+ * calls the <code>blocked</code> method of the listeners after this one. The row says what
+ * is true, the entry is open. This only happens where earlier failures used up all attempts
+ * but one.
  * <p>
  * An entry which is not a phase-two dispatch is left alone. The outbox bean belongs to
  * VanillaBP, but an application may schedule work of its own on it, and blocking
@@ -81,10 +111,17 @@ public class GruelboxPhaseTwoFailureListener implements TransactionOutboxListene
   private final Supplier<VanillaBpMetrics> metrics;
 
   /**
-   * How many attempts an entry has, for the line which says how many of them a repeated
-   * entry has used.
+   * The key of the session entry which carries the moment an entry was written. The
+   * session of a gruelbox invocation is a map of strings, so the moment is stored in the
+   * ISO-8601 form of {@link Instant#toString()}.
    */
-  private final int blockAfterAttempts;
+  public static final String WRITTEN_AT = "vanillabp.writtenAt";
+
+  /**
+   * The settings of <code>vanillabp.outbox</code>: the attempt budget, which the line about
+   * a repeated entry names, and how long an entry may wait for its BPMS.
+   */
+  private final PhaseTwoOutboxProperties properties;
 
   /**
    * The listener of ONE gruelbox outbox. It writes into that outbox' table through that
@@ -96,19 +133,38 @@ public class GruelboxPhaseTwoFailureListener implements TransactionOutboxListene
    * @param transactionManager The transaction manager of that outbox, giving the
    *          transaction the write runs in
    * @param metrics What a blocked entry is counted into
-   * @param blockAfterAttempts The attempt budget of this outbox
-   *          (<code>vanillabp.outbox.block-after-attempts</code>)
+   * @param properties The settings of <code>vanillabp.outbox</code>, which give the attempt
+   *          budget of this outbox and how long an entry may wait for its BPMS
    */
   public GruelboxPhaseTwoFailureListener(
       final Persistor persistor,
       final TransactionManager transactionManager,
       final Supplier<VanillaBpMetrics> metrics,
-      final int blockAfterAttempts) {
+      final PhaseTwoOutboxProperties properties) {
 
     this.persistor = persistor;
     this.transactionManager = transactionManager;
     this.metrics = metrics;
-    this.blockAfterAttempts = blockAfterAttempts;
+    this.properties = properties;
+
+  }
+
+  /**
+   * Stores the moment an entry is written with the entry. Gruelbox asks for this map when it
+   * builds a new entry, on the thread which schedules it, so the moment is the one of the
+   * schedule. A younger call which replaces a waiting entry is a new entry and gets a moment
+   * of its own, so its wait starts again.
+   * <p>
+   * Gruelbox asks this for every entry of the outbox, also for work an application schedules
+   * on it. The key is VanillaBP's own and nothing else reads it, so such an entry carries it
+   * along unused.
+   *
+   * @return The session to store with the new entry
+   */
+  @Override
+  public Map<String, String> extractSession() {
+
+    return Map.of(WRITTEN_AT, Instant.now().toString());
 
   }
 
@@ -122,6 +178,15 @@ public class GruelboxPhaseTwoFailureListener implements TransactionOutboxListene
     }
 
     final var permanent = PhaseTwoPermanentFailure.isPermanent(cause);
+    final var retryAfter = permanent ? null : PhaseTwoRetryLater.retryAfter(cause);
+    final var writtenAt = writtenAtOf(entry);
+
+    // looked at before the attempt budget, so an entry which used up its attempts earlier
+    // is not blocked by an answer "not yet"
+    if ((retryAfter != null) && (writtenAt != null)) {
+      waitForTheBpms(entry, cause, retryAfter, writtenAt);
+      return;
+    }
 
     if (entry.isBlocked()) {
       // gruelbox used up 'vanillabp.outbox.block-after-attempts' and wrote the block
@@ -135,14 +200,122 @@ public class GruelboxPhaseTwoFailureListener implements TransactionOutboxListene
       return;
     }
 
-    if (blockNow(entry)) {
+    if (blockNow(
+        entry,
+        "the adapter said that repeating cannot fix its failure - it is attempted again until '%s' are used up"
+            .formatted(PhaseTwoOutboxProperties.BLOCK_AFTER_ATTEMPTS_PROPERTY))) {
       reportPermanentFailure(entry, cause);
     }
 
   }
 
   /**
-   * Writes the due time a dispatch asked for. Gruelbox has one distance for the whole
+   * Handles the answer "not yet" of an entry which knows when it was written. The entry is
+   * due again after the window the adapter named and the attempt gruelbox counted is taken
+   * back, or it is blocked because it has waited long enough.
+   *
+   * @param entry The entry whose attempt was answered with "not yet"
+   * @param cause What the dispatch was rejected with
+   * @param retryAfter The window the adapter named
+   * @param writtenAt When the entry was written
+   */
+  private void waitForTheBpms(
+      final TransactionOutboxEntry entry,
+      final Throwable cause,
+      final Duration retryAfter,
+      final Instant writtenAt) {
+
+    final var now = Instant.now();
+    if (properties.hasWaitedForVisibilityLongEnough(writtenAt, now)) {
+      // the block keeps the attempt gruelbox counted, the same as every other block. Where
+      // gruelbox blocked the entry itself, the row says so already
+      if (!entry.isBlocked() && !blockNow(
+          entry,
+          "it waited longer than '%s' for its BPMS - the next answer \"not yet\" tries again"
+              .formatted(PhaseTwoOutboxProperties.WAIT_FOR_VISIBILITY_AT_MOST_PROPERTY))) {
+        return;
+      }
+      reportWaitedTooLong(entry, cause, Duration.between(writtenAt, now));
+      return;
+    }
+
+    final var gruelboxCounted = entry.getAttempts();
+    final var gruelboxBlocked = entry.isBlocked();
+    final var gruelboxWrote = entry.getNextAttemptTime();
+    // truncated the way gruelbox truncates its own distances, so the moment in the row and
+    // the moment in the entry are the same one whatever the database stores
+    final var askedFor = now
+        .plus(retryAfter)
+        .truncatedTo(ChronoUnit.MILLIS);
+    try {
+      entry.setAttempts(Math.max(0, gruelboxCounted - 1));
+      entry.setBlocked(false);
+      entry.setNextAttemptTime(askedFor);
+      transactionManager.inTransactionThrows(transaction -> persistor.update(transaction, entry));
+    } catch (final Exception e) {
+      entry.setAttempts(gruelboxCounted);
+      entry.setBlocked(gruelboxBlocked);
+      entry.setNextAttemptTime(gruelboxWrote);
+      if (gruelboxBlocked) {
+        reportAttemptsUsedUp(entry, cause, false);
+        return;
+      }
+      log.debug(
+          "Could not write the due time the dispatch of the outbox entry '{}' asked for - it is "
+              + "dispatched again after '{}' instead, and this attempt counts",
+          entry.getId(),
+          PhaseTwoOutboxProperties.ATTEMPT_FREQUENCY_PROPERTY,
+          e);
+      return;
+    }
+    final var call = argumentsOf(entry);
+    log.info(
+        "Phase two ({}) of BPMN process '{}' of workflow module '{}' for aggregate '{}' cannot run "
+            + "yet - the outbox entry '{}' is dispatched again in {}, and it waits until {} at most: {}",
+        call[0],
+        call[2],
+        call[1],
+        call[3],
+        entry.getId(),
+        retryAfter,
+        writtenAt.plus(properties.waitForVisibilityAtMost()),
+        cause.getMessage());
+
+  }
+
+  /**
+   * Reads when an entry was written, from the session {@link #extractSession()} stored with
+   * it.
+   *
+   * @param entry The entry a dispatch failed for
+   * @return The moment, or <code>null</code> where the entry carries none or one which
+   *         cannot be read. Such an entry keeps counting the answer "not yet" as an attempt
+   */
+  static Instant writtenAtOf(
+      final TransactionOutboxEntry entry) {
+
+    final var session = entry
+        .getInvocation()
+        .getSession();
+    if (session == null) {
+      return null;
+    }
+    final var writtenAt = session.get(WRITTEN_AT);
+    if (writtenAt == null) {
+      return null;
+    }
+    try {
+      return Instant.parse(writtenAt);
+    } catch (final DateTimeParseException e) {
+      return null;
+    }
+
+  }
+
+  /**
+   * Writes the due time a dispatch asked for, on an entry which does not know when it was
+   * written. The attempt gruelbox counted stays counted there, because without that moment
+   * nothing but the attempt budget could end a wait which never ends. Gruelbox has one distance for the whole
    * outbox and has just written it onto the row, and the window of the dispatch replaces it
    * either way: an adapter naming a window knows when its BPMS can answer, which is more
    * than a store configured once for every workflow knows. A window farther away than the
@@ -191,21 +364,24 @@ public class GruelboxPhaseTwoFailureListener implements TransactionOutboxListene
         entry.getId(),
         retryAfter,
         entry.getAttempts(),
-        blockAfterAttempts,
+        properties.getBlockAfterAttempts(),
         cause.getMessage());
 
   }
 
   /**
-   * Writes the blocked flag of an entry the adapter said repeating cannot fix.
+   * Writes the blocked flag of an entry.
    *
    * @param entry The entry to block
+   * @param why Why the entry is to be blocked and what happens if it cannot be, for the
+   *          line which reports a write that failed
    * @return Whether the entry was blocked. A write which does not find the entry at the
    *         version it was handed over at lost against somebody else touching the same
    *         row, and that other writer decides what the entry is
    */
   private boolean blockNow(
-      final TransactionOutboxEntry entry) {
+      final TransactionOutboxEntry entry,
+      final String why) {
 
     try {
       entry.setBlocked(true);
@@ -214,11 +390,9 @@ public class GruelboxPhaseTwoFailureListener implements TransactionOutboxListene
     } catch (final Exception e) {
       entry.setBlocked(false);
       log.warn(
-          "Could not block the outbox entry '{}' although the adapter said that repeating cannot "
-              + "fix its failure - it is attempted again until '{}' "
-              + "are used up",
+          "Could not block the outbox entry '{}' although {}",
           entry.getId(),
-          PhaseTwoOutboxProperties.BLOCK_AFTER_ATTEMPTS_PROPERTY,
+          why,
           e);
       return false;
     }
@@ -249,6 +423,36 @@ public class GruelboxPhaseTwoFailureListener implements TransactionOutboxListene
         adapterOf(call),
         entry.getId(),
         cause);
+
+  }
+
+  /**
+   * Says which workflow was lost when an entry waited too long for its BPMS, in the words
+   * the stores VanillaBP writes itself use.
+   *
+   * @param entry The blocked entry
+   * @param cause The last answer "not yet"
+   * @param waited How long the entry waited since it was written
+   */
+  private void reportWaitedTooLong(
+      final TransactionOutboxEntry entry,
+      final Throwable cause,
+      final Duration waited) {
+
+    final var call = argumentsOf(entry);
+    count(call, false);
+    log.error(
+        "Phase two ({}) of BPMN process '{}' of workflow module '{}' for aggregate '{}' waited {} "
+            + "for its BPMS to report the workflow, which is longer than '{}' allows - the outbox "
+            + "entry '{}' is now blocked and has to be cleaned up manually: {}",
+        call[0],
+        call[2],
+        call[1],
+        call[3],
+        waited,
+        PhaseTwoOutboxProperties.WAIT_FOR_VISIBILITY_AT_MOST_PROPERTY,
+        entry.getId(),
+        cause.getMessage());
 
   }
 

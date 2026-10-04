@@ -23,6 +23,7 @@ import com.gruelbox.transactionoutbox.Invocation;
 import com.gruelbox.transactionoutbox.TransactionOutboxEntry;
 import com.gruelbox.transactionoutbox.spring.SpringTransactionManager;
 
+import io.vanillabp.integration.adapter.migration.config.PhaseTwoOutboxProperties;
 import io.vanillabp.integration.adapter.migration.observability.VanillaBpMetrics;
 import io.vanillabp.integration.spi.PhaseOperation;
 import io.vanillabp.integration.spi.PhaseTwoRetryLater;
@@ -85,7 +86,7 @@ public class GruelboxWritesTheDueTimeADispatchAskedForTest {
   private GruelboxPhaseTwoFailureListener listener() {
 
     return new GruelboxPhaseTwoFailureListener(
-        persistor, transactionManager, () -> VanillaBpMetrics.NONE, 50);
+        persistor, transactionManager, () -> VanillaBpMetrics.NONE, new PhaseTwoOutboxProperties());
 
   }
 

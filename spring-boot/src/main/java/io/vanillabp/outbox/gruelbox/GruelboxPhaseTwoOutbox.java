@@ -22,8 +22,9 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * The {@link PhaseTwoOutbox} implementation of a Spring Boot application which persists
- * its workflow aggregates via JPA and asked to keep gruelbox
- * (<code>vanillabp.outbox.gruelbox.enabled</code>): delegates to a
+ * its workflow aggregates via JPA and has this artifact on its classpath. Adding the
+ * dependency is what selects this store, and <code>vanillabp.outbox.gruelbox.enabled</code>
+ * only switches it off again. It delegates to a
  * <a href="https://github.com/gruelbox/transaction-outbox">gruelbox
  * transaction-outbox</a> configured with Spring's transaction manager, so the outbox
  * entry is enlisted in the currently running local (JDBC) transaction.
