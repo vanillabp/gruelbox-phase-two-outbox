@@ -475,7 +475,7 @@ public class GruelboxPhaseTwoOutbox implements PhaseTwoOutbox {
    * set to <code>null</code> here, where it is needed. gruelbox allows any number of rows
    * without a unique request ID. The write counts gruelbox' <code>version</code> up, so a
    * listener which is about to open the row again loses gruelbox' own optimistic lock and
-   * leaves it blocked. See the decision in DECISIONS.pending/915.md.
+   * leaves it blocked. See decision 5 in the repository's DECISIONS.md.
    *
    * @return The waiting entry or <code>null</code>
    */
