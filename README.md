@@ -121,11 +121,86 @@ kinds of entry have no such moment: one written by an earlier version of this ar
 written by an outbox built without VanillaBP's listener. For them the answer "not yet" still counts
 as an attempt, and the attempt budget ends the wait. No entry is lost either way.
 
+## A blocked entry and the way back
+
+An entry is blocked in three cases. The adapter or an extension said that repeating cannot help
+(`PhaseTwoPermanentFailure`), and the entry had its one attempt. Or `vanillabp.outbox.block-after-attempts`
+attempts failed. Or the entry waited longer than `vanillabp.outbox.wait-for-visibility-at-most` for its
+BPMS. Nothing dispatches a blocked entry again, and nothing deletes it. It waits for a person. The ERROR
+which reports it names the workflow and the entry id, and it links to this section.
+
+The stores VanillaBP writes itself have the same steps on the wiki page
+[Blocked outbox entries](https://github.com/vanillabp/adapter-platform-integration/wiki/Blocked-outbox-entries).
+Here the table is gruelbox' `TXNO_OUTBOX`, and the steps differ a little.
+
+### Finding it
+
+```sql
+SELECT id, uniqueRequestId, attempts, lastAttemptTime, invocation
+  FROM TXNO_OUTBOX
+ WHERE blocked = TRUE AND processed = FALSE;
+```
+
+`id` is the id the ERROR names. `invocation` is the call as JSON. Its arguments are, in this order, the
+operation, the workflow module, the BPMN process, the aggregate id, the adapter id and the arguments of the
+operation. A database without a boolean type, SQL Server for one, takes `1` and `0` instead of `TRUE` and
+`FALSE`.
+
+### Opening it again
+
+Fix the cause first. Then:
+
+```sql
+UPDATE TXNO_OUTBOX
+   SET blocked = FALSE, attempts = 0, nextAttemptTime = CURRENT_TIMESTAMP
+ WHERE id = '...' AND blocked = TRUE AND processed = FALSE;
+```
+
+gruelbox' own `TransactionOutbox.unblock(id)` writes the first two columns as well, inside a transaction of
+the application. It leaves the due time as it was, which has passed already. Either way the next flush takes
+the entry, and that is at most `vanillabp.outbox.poll-interval` away.
+`APermanentFailureOnGruelboxIsBlockedAndFreesItsKeyTest` opens an entry with `unblock` and sees it
+dispatched.
+
+An entry which was blocked because it waited too long for its BPMS needs one more thought. The moment it was
+written lies in its `invocation` (the session key `vanillabp.writtenAt`), and opening the entry does not
+change it. If the BPMS still answers "not yet", the entry is blocked again at that first answer. So open it
+once the BPMS reports the workflow.
+
+### Deleting it
+
+```sql
+DELETE FROM TXNO_OUTBOX WHERE id = '...' AND blocked = TRUE AND processed = FALSE;
+```
+
+The operation is gone then. Delete an entry only where nobody wants the operation any more, or where a
+younger entry carries it (see below). A payload the entry named stays in `VANILLABP_PHASE_TWO_OUTBOX_PAYLOAD`
+for a while. The housekeeping removes a payload which no entry names once `vanillabp.outbox.retention`
+passed.
+
+### What happens to the key
+
+A blocked entry keeps its `uniqueRequestId` until the application plans the same operation again. Then
+this store takes the key away from the blocked row, so its `uniqueRequestId` is empty, and writes a new
+entry with that key. The blocked row stays where it is. The stores VanillaBP writes itself end up in the same
+place. They free the key at the moment they block an entry, and this store frees it when the key is asked
+for, because gruelbox has no second column to move the key into.
+`APermanentFailureOnGruelboxIsBlockedAndFreesItsKeyTest` holds this: one attempt, the entry blocked, and
+the next plan of the same operation dispatched as an entry of its own.
+
+So look at `uniqueRequestId` before you open a blocked entry:
+
+- It still holds the key. Nobody planned the operation again, and opening the entry is the only way it
+  happens. While the entry waits, a new plan of the same operation is discarded as usual.
+- It is empty. The operation was planned again, and a younger row carries the key; it may be dispatched
+  already. Opening the blocked entry sends the operation a second time, so deleting it is usually the
+  better answer.
+
 ## What this store does not do
 
 The stores VanillaBP writes itself own their table, their dispatch and their retry policy. This one
 is a thin layer over gruelbox', and the thinness is the point: the rows stay the rows an
-application already has. Five things follow from it.
+application already has. Four things follow from it.
 
 **One retry distance.** gruelbox schedules every failed attempt at the one distance it was built
 with. `vanillabp.outbox.attempt-frequency` is that distance, and `vanillabp.outbox.max-attempt-frequency`
@@ -148,9 +223,6 @@ published, because the submitter still sees it.
 serialized invocation here, so a start would have to deserialize the whole table to find out which
 adapters a backlog is waiting for. It is said at the first dispatch instead, where the entry is read
 anyway, and once per adapter id however long the backlog is.
-
-**A blocked entry holds its key.** gruelbox keeps the unique request id of a blocklisted row until
-the row is removed, so the operation which failed cannot be scheduled again in the meantime.
 
 ## The tables
 

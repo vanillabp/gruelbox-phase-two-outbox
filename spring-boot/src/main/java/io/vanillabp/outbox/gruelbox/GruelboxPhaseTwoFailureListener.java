@@ -118,6 +118,14 @@ public class GruelboxPhaseTwoFailureListener implements TransactionOutboxListene
   public static final String WRITTEN_AT = "vanillabp.writtenAt";
 
   /**
+   * Where an operator reads how to find a blocked entry of this store, open it again or
+   * delete it: the section of this repository's README about gruelbox' table. Each ERROR
+   * which reports a blocked entry ends with this address, and the tests which read those
+   * lines take it from here.
+   */
+  public static final String BLOCKED_ENTRIES_GUIDE = "https://github.com/vanillabp/gruelbox-phase-two-outbox#a-blocked-entry-and-the-way-back";
+
+  /**
    * The settings of <code>vanillabp.outbox</code>: the attempt budget, which the line about
    * a repeated entry names, and how long an entry may wait for its BPMS.
    */
@@ -415,7 +423,8 @@ public class GruelboxPhaseTwoFailureListener implements TransactionOutboxListene
     log.error(
         "Dispatching phase two ({}) of BPMN process '{}' of workflow module '{}' for aggregate '{}' "
             + "on adapter '{}' failed for a reason repeating cannot fix - the outbox entry '{}' is "
-            + "blocked and has to be cleaned up manually!",
+            + "blocked. How to find it, open it again or delete it: "
+            + BLOCKED_ENTRIES_GUIDE,
         call[0],
         call[2],
         call[1],
@@ -444,7 +453,9 @@ public class GruelboxPhaseTwoFailureListener implements TransactionOutboxListene
     log.error(
         "Phase two ({}) of BPMN process '{}' of workflow module '{}' for aggregate '{}' waited {} "
             + "for its BPMS to report the workflow, which is longer than '{}' allows - the outbox "
-            + "entry '{}' is now blocked and has to be cleaned up manually: {}",
+            + "entry '{}' is now blocked. How to find it, open it again or delete it: "
+            + BLOCKED_ENTRIES_GUIDE
+            + " - the last answer was: {}",
         call[0],
         call[2],
         call[1],
@@ -472,8 +483,9 @@ public class GruelboxPhaseTwoFailureListener implements TransactionOutboxListene
     count(call, permanent);
     log.error(
         "Dispatching phase two ({}) of BPMN process '{}' of workflow module '{}' for aggregate '{}' "
-            + "on adapter '{}' failed {} times - the outbox entry '{}' is now blocked and has to be "
-            + "cleaned up manually!",
+            + "on adapter '{}' failed {} times - the outbox entry '{}' is now blocked. How to find it, "
+            + "open it again or delete it: "
+            + BLOCKED_ENTRIES_GUIDE,
         call[0],
         call[2],
         call[1],

@@ -467,6 +467,15 @@ public class GruelboxPhaseTwoOutbox implements PhaseTwoOutbox {
    * An entry gruelbox already processed is DELETED here - it has done its work, and its
    * trail ends there, which is the price of gruelbox owning the table - so the key is
    * free and this answers <code>null</code>.
+   * <p>
+   * A BLOCKED entry gives its key away and stays. It waits for a person, and the stores
+   * VanillaBP writes itself free the key of such an entry when they block it, so the
+   * application can plan the operation again. gruelbox' unique constraint spans a blocked
+   * row too, and its table has no second column the key could move into, so the key is
+   * set to <code>null</code> here, where it is needed. gruelbox allows any number of rows
+   * without a unique request ID. The write counts gruelbox' <code>version</code> up, so a
+   * listener which is about to open the row again loses gruelbox' own optimistic lock and
+   * leaves it blocked. See decision 5 in the repository's DECISIONS.md.
    *
    * @return The waiting entry or <code>null</code>
    */
@@ -474,11 +483,12 @@ public class GruelboxPhaseTwoOutbox implements PhaseTwoOutbox {
       final PhaseTwoCall call,
       final String idempotencyKey) {
 
-    final var selectEntry = "SELECT id, processed, version, invocation FROM %s WHERE uniqueRequestId = ?"
+    final var selectEntry = "SELECT id, processed, version, invocation, blocked FROM %s WHERE uniqueRequestId = ?"
         .formatted(tableName);
     final var connection = DataSourceUtils.getConnection(dataSource);
     try {
       final String entryId;
+      final boolean blocked;
       final WaitingEntry waiting;
       try (var statement = connection.prepareStatement(selectEntry)) {
         statement.setString(1, idempotencyKey);
@@ -487,13 +497,19 @@ public class GruelboxPhaseTwoOutbox implements PhaseTwoOutbox {
             return null;
           }
           entryId = resultSet.getString(1);
-          waiting = resultSet.getBoolean(2)
+          final var processed = resultSet.getBoolean(2);
+          blocked = !processed && resultSet.getBoolean(5);
+          waiting = (processed || blocked)
               ? null
               : new WaitingEntry(entryId, resultSet.getInt(3), payloadReferenceOf(resultSet.getString(4)));
         }
       }
       if (waiting != null) {
         return waiting;
+      }
+      if (blocked) {
+        freeTheKeyOfABlockedEntry(connection, call, entryId);
+        return null;
       }
       final var deleteEntry = "DELETE FROM %s WHERE id = ? AND processed = ?".formatted(tableName);
       try (var statement = connection.prepareStatement(deleteEntry)) {
@@ -520,6 +536,48 @@ public class GruelboxPhaseTwoOutbox implements PhaseTwoOutbox {
     } finally {
       DataSourceUtils.releaseConnection(connection, dataSource);
     }
+
+  }
+
+  /**
+   * Takes the key away from a blocked entry, so the operation it failed for can be
+   * planned again. The row stays as it is otherwise: blocked, with its attempts, its
+   * invocation and the payload it names, for whoever repairs it. Opened again later, it
+   * is dispatched without a key, so the operation may reach the BPMS twice - the same
+   * residual the stores VanillaBP writes itself document for a blocked entry.
+   * <p>
+   * 0 rows means that somebody opened or removed the entry between the read and this
+   * write. The insert which follows then meets the key again or does not, and gruelbox'
+   * unique constraint decides, as for two nodes scheduling at the same moment.
+   *
+   * @param connection The connection bound to the caller's transaction
+   * @param call The call which plans the operation again
+   * @param entryId The id of the blocked entry
+   * @throws SQLException If the write fails
+   */
+  private void freeTheKeyOfABlockedEntry(
+      final Connection connection,
+      final PhaseTwoCall call,
+      final String entryId) throws SQLException {
+
+    final var freeTheKey = """
+        UPDATE %s SET uniqueRequestId = NULL, version = version + 1 \
+        WHERE id = ? AND blocked = ? AND processed = ?"""
+        .formatted(tableName);
+    try (var statement = connection.prepareStatement(freeTheKey)) {
+      statement.setString(1, entryId);
+      statement.setBoolean(2, true);
+      statement.setBoolean(3, false);
+      statement.executeUpdate();
+    }
+    log.debug(
+        "Phase two ({}) of BPMN process '{}' of workflow module '{}' for aggregate '{}' is planned "
+            + "again - the blocked outbox entry '{}' gave its key away and stays blocked",
+        call.operation(),
+        call.bpmnProcessId(),
+        call.workflowModuleId(),
+        call.workflowAggregateId(),
+        entryId);
 
   }
 

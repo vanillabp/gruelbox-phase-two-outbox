@@ -62,7 +62,7 @@ The price is a list of things the stores VanillaBP writes itself do and this one
   waiting for cannot be read without deserializing the whole table. What the start of the other
   stores says is said at the first dispatch instead, where the entry is read anyway, and it is said
   once per adapter id however long the backlog is.
-- **A blocked entry holds its key.** gruelbox keeps the unique request id of a blocklisted row
+- **A blocked entry holds its key.** *Superseded by decision 5.* gruelbox keeps the unique request id of a blocklisted row
   until the row is removed, so the operation which failed cannot be scheduled again in the
   meantime.
 
@@ -123,3 +123,36 @@ gruelbox does not make this easy, and three things follow from that.
 The moment in the session could also give this store an age of its oldest waiting entry, which
 decision 2 says it cannot report. It does not do so yet. Reading it needs every waiting invocation
 deserialized, which is the cost decision 2 declines for the adapter ids at a start.
+
+### 5. A blocked entry gives its key away when the same operation is planned again
+
+*Supersedes the last bullet of decision 2 ("A blocked entry holds its key").*
+
+The stores VanillaBP writes itself free the key of an entry at the moment they block it. The row
+stays for whoever repairs it, and the application can plan the same operation again. This store did
+not. gruelbox' unique constraint on `uniqueRequestId` spans a blocked row as well, so the operation
+which failed could not be planned again until somebody removed the row. The answer "already planned"
+looks exactly like a correct deduplication, so nobody noticed.
+
+It was measured on 2026-10-06 with `APermanentFailureOnGruelboxIsBlockedAndFreesItsKeyTest`, H2,
+gruelbox 7.1.750, `attempt-frequency` and `poll-interval` at half a second. A `PhaseTwoPermanentFailure`
+was attempted once and blocked: one attempt in the row and one call of the handler, still one after two
+seconds. The next `schedule` of the same key returned `false` and nothing was dispatched.
+
+The store now frees the key when it is asked for. `schedule` reads the row of the key anyway. Where
+that row is blocked and not processed, it sets `uniqueRequestId` to `NULL` and counts `version` up, in
+the caller's transaction, and then writes the new entry. The blocked row keeps everything else.
+
+Freeing the key at the moment of the block was weighed and not taken. The failure listener would need
+the data source and the table name next to gruelbox' persistor, and it would only catch the blocks it
+writes itself. An entry gruelbox blocked without VanillaBP's listener, or one blocked by an earlier
+version of this artifact, would keep its key. Freeing it on demand covers all of them and costs no
+extra statement, because the row is read before every schedule already.
+
+`version` is counted up because gruelbox' listener may open a row again right after gruelbox blocked
+it (decision 4). That write carries `version` in its condition, so it loses against this one and the
+row stays blocked, rather than being open and without a key next to the new entry.
+
+The price is the one the other stores pay as well. A blocked row which is opened again later is
+dispatched without a key. If the operation was planned again in the meantime, it reaches the BPMS
+twice. The README says to check `uniqueRequestId` before opening an entry for that reason.
