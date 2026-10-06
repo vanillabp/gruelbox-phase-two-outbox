@@ -9,6 +9,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import io.vanillabp.integration.spi.PhaseOperation;
 import io.vanillabp.integration.spi.PhaseOperationRegistry;
 import io.vanillabp.integration.spi.PhaseTwoCall;
+import io.vanillabp.integration.spi.PhaseTwoPermanentFailure;
 import io.vanillabp.integration.spi.PhaseTwoRetryLater;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +52,12 @@ public class SampleExtension {
   private final List<PhaseTwoCall> dispatched = new CopyOnWriteArrayList<>();
 
   private volatile int failNextDispatches;
+
+  /**
+   * How many of the next dispatches fail the way an adapter fails an operation which
+   * repeating cannot fix.
+   */
+  private volatile int failNextDispatchesPermanently;
 
   /**
    * How many of the next dispatches are rejected the way an adapter rejects a workflow its
@@ -124,6 +131,11 @@ public class SampleExtension {
                 rejectNextDispatches--;
                 throw new PhaseTwoRetryLater(
                     "test rejection: the workflow is not searchable yet", rejectionWindow);
+              }
+              if (failNextDispatchesPermanently > 0) {
+                failNextDispatchesPermanently--;
+                throw new PhaseTwoPermanentFailure(
+                    "test failure: repeating cannot fix this", new IllegalStateException("the model is broken"));
               }
               if (failNextDispatches > 0) {
                 failNextDispatches--;
@@ -224,6 +236,7 @@ public class SampleExtension {
 
     dispatched.clear();
     failNextDispatches = 0;
+    failNextDispatchesPermanently = 0;
     rejectNextDispatches = 0;
     writeWhileDispatching = false;
     holdArmed.set(false);
@@ -294,6 +307,20 @@ public class SampleExtension {
       final int count) {
 
     failNextDispatches = count;
+
+  }
+
+  /**
+   * Lets the next dispatches fail with {@link PhaseTwoPermanentFailure}, which is what an
+   * extension throws where waiting longer cannot help, for instance a workflow which
+   * still has no user task after ten minutes.
+   *
+   * @param count The number of dispatches to fail that way
+   */
+  public void failNextDispatchesPermanently(
+      final int count) {
+
+    failNextDispatchesPermanently = count;
 
   }
 

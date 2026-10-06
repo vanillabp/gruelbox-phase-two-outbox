@@ -226,6 +226,8 @@ public class GruelboxBlocksAPermanentFailureTest {
     assertTrue(reported.contains("4711"), reported);
     assertTrue(reported.contains("camunda7"), reported);
     assertTrue(reported.contains(entry.getId()), reported);
+    // the line is where an operator starts, so it says where the way back is described
+    assertTrue(reported.contains(GruelboxPhaseTwoFailureListener.BLOCKED_ENTRIES_GUIDE), reported);
 
   }
 
@@ -261,6 +263,7 @@ public class GruelboxBlocksAPermanentFailureTest {
         blocked.entries);
     assertEquals(1, errors().size());
     assertTrue(errors().get(0).getFormattedMessage().contains("50 times"));
+    assertTrue(errors().get(0).getFormattedMessage().contains(GruelboxPhaseTwoFailureListener.BLOCKED_ENTRIES_GUIDE));
 
   }
 

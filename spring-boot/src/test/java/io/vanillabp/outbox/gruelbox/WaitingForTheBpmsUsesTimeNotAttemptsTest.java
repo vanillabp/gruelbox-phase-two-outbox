@@ -295,6 +295,7 @@ public class WaitingForTheBpmsUsesTimeNotAttemptsTest {
     assertEquals(1, errors().size(), errors().toString());
     final var reported = errors().getFirst();
     assertTrue(reported.contains(WAITED_TOO_LONG), reported);
+    assertTrue(reported.contains(GruelboxPhaseTwoFailureListener.BLOCKED_ENTRIES_GUIDE), reported);
     assertTrue(reported.contains("taxiride"), reported);
     assertTrue(reported.contains(entry.getId()), reported);
 
