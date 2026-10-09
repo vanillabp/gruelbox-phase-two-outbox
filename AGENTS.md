@@ -109,9 +109,8 @@ mvn install
 ```
 
 The build needs the platform, which is `2.0.0-SNAPSHOT` until the 2.0 release. Two ways to get it:
-build `adapter-platform-integration` locally, or take the published snapshot with
-`mvn -Pvanillabp-snapshots install`, which needs a GitHub token with `read:packages` in your
-`settings.xml`.
+build `adapter-platform-integration` locally, or let Maven take the published snapshot from the
+snapshot repository of Maven Central, which needs no token.
 
 Tests: the unit tests boot a Spring context with the auto-configurations under test, the tests under
 `io/vanillabp/outbox/gruelbox/it` boot a whole application against H2 and the BPMS double the
