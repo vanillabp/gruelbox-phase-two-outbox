@@ -17,9 +17,6 @@ vanillabp:
         test:
           resources-location: classpath*:test-module/processes/dummy
       workflows:
-        # the BPMS double deploys this placeholder model, and no @WorkflowService of these
-        # tests claims it. The start ends over a deployed process nobody claims unless the
-        # application says that somebody else serves it.
         dummy-process:
           implemented-externally: true
         SampleWorkflowService:
