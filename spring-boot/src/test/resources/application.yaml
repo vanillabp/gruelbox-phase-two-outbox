@@ -17,6 +17,8 @@ vanillabp:
         test:
           resources-location: classpath*:test-module/processes/dummy
       workflows:
+        dummy-process:
+          implemented-externally: true
         SampleWorkflowService:
           allow-full-sync-with-bpms: true
           declared-aggregate-values:
