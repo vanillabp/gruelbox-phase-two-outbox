@@ -42,7 +42,7 @@
   <scm>
     <connection>scm:git:https://github.com/vanillabp/gruelbox-phase-two-outbox.git</connection>
     <developerConnection>scm:git:https://github.com/vanillabp/gruelbox-phase-two-outbox.git</developerConnection>
-    <url>http://github.com/vanillabp/gruelbox-phase-two-outbox/tree/main</url>
+    <url>https://github.com/vanillabp/gruelbox-phase-two-outbox/tree/main</url>
   </scm>
 
   <properties>
