@@ -39,8 +39,13 @@ every open pull request, before the pull request exists:
 bin/check-decision-numbers.sh
 ```
 
-The script reports and changes nothing. The other script of `bin/` is
-`bin/check-orphaned-javadoc.sh`. It finds a javadoc block standing directly in front of a second one,
+The script reports and changes nothing.
+
+After you renumber, run `bin/check-decision-citations.sh`. It says whether every citation of a
+decision still points at an entry, also where a citation is wrapped over two lines. The *Checks*
+workflow runs it on every pull request.
+
+`bin/check-orphaned-javadoc.sh` finds a javadoc block standing directly in front of a second one,
 which javadoc drops without a word, so the text appears nowhere. Run it when you wrote or moved a
 comment. Hang a block it reports back on the element it describes rather than delete it.
 

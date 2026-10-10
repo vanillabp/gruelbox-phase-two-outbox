@@ -156,3 +156,22 @@ row stays blocked, rather than being open and without a key next to the new entr
 The price is the one the other stores pay as well. A blocked row which is opened again later is
 dispatched without a key. If the operation was planned again in the meantime, it reaches the BPMS
 twice. The README says to check `uniqueRequestId` before opening an entry for that reason.
+
+### 6. A younger call replaces a waiting entry by deleting its row and scheduling again
+
+*This paragraph moved here from decision 68 of `adapter-platform-integration`, which sets the rule
+for every store: the youngest call replaces the entry still waiting, and only where the call says
+so. It describes code of this repository, so it is kept here, word for word. Decision 68 there now
+points here.*
+
+Gruelbox has no API for replacing, so there the row goes: the waiting entry is deleted and the
+younger call is scheduled under the same `uniqueRequestId`, in the caller's transaction. Two
+things have to agree that no dispatch holds it. `version = 0` is gruelbox' own optimistic lock
+and covers every entry a flush picked up, on any instance. A commit, though, submits its entry
+straight away and writes nothing, so the row still reads as untouched while gruelbox holds it
+with `SELECT ... FOR UPDATE`, and a delete meeting that lock would make the application's
+transaction wait for a remote call - which is what an outbox exists to prevent. That case is
+asked of a register the submitter keeps, which is where gruelbox already hands every entry
+over before it invokes anything. The register answers for its own instance. What it leaves is
+one instance dispatching an entry while another replaces it, which means two instances writing
+one workflow at once, and VanillaBP names that the application's own business anyway.
