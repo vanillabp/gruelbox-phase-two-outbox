@@ -3,25 +3,22 @@ package io.vanillabp.outbox.gruelbox;
 import io.vanillabp.integration.spi.PhaseTwoCall;
 
 /**
- * The invocation scheduled through the gruelbox transaction outbox, carrying the
- * fields of a {@link PhaseTwoCall}. A dedicated interface is required because
- * gruelbox's <code>DefaultInvocationSerializer</code> only supports a whitelist of
- * parameter types - the call is flattened into {@link String} parameters and rebuilt
- * at dispatch time. Being an interface, it can be proxied by a plain JDK proxy (no
- * ByteBuddy required).
+ * The invocation scheduled through the gruelbox transaction outbox. It carries the fields of a
+ * {@link PhaseTwoCall}. It needs an interface of its own, because the
+ * <code>DefaultInvocationSerializer</code> of gruelbox accepts only a fixed list of parameter
+ * types. So the call is split into {@link String} parameters and built again at dispatch time. An
+ * interface can be proxied by a plain JDK proxy, so no ByteBuddy is needed.
  * <p>
- * The {@link PhaseTwoCall#args()} map is transported GENERICALLY in its serialized
- * form ({@link PhaseTwoCall#serializeArgs(java.util.Map)}) - the store stays
- * operation-agnostic (stores never interpret arguments; only the core's router
- * does).
+ * The {@link PhaseTwoCall#args()} map travels as a whole, in its serialized form
+ * ({@link PhaseTwoCall#serializeArgs(java.util.Map)}). So the store does not need to know the
+ * operations. Stores never read the arguments; only the router of the core does.
  */
 public interface GruelboxPhaseTwoDispatch {
 
   /**
-   * Dispatches a phase-two call (called by the outbox after the scheduling
-   * transaction was committed) by rebuilding the {@link PhaseTwoCall} and routing it
-   * through the core's
-   * {@link io.vanillabp.integration.adapter.migration.processservice.PhaseTwoRouter}.
+   * Dispatches a phase-two call. The outbox calls it after the scheduling transaction was
+   * committed. It builds the {@link PhaseTwoCall} again and hands it to the
+   * {@link io.vanillabp.integration.adapter.migration.processservice.PhaseTwoRouter} of the core.
    *
    * @param operation The name of the scheduled {@link
    *        io.vanillabp.integration.spi.PhaseOperation}

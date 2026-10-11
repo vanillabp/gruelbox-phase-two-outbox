@@ -48,59 +48,53 @@ import io.vanillabp.integration.utils.config.JpaSpringDataUtilConfiguration;
 import jakarta.persistence.EntityManagerFactory;
 
 /**
- * Auto-configuration of the {@link PhaseTwoOutbox} for JPA-based aggregate persistence,
- * backed by the <a href="https://github.com/gruelbox/transaction-outbox">gruelbox
- * transaction-outbox</a>. The dependency is the whole wiring: this artifact takes the
- * place of the store VanillaBP writes itself
- * ({@link JdbcPhaseTwoOutboxAutoConfiguration}) as soon as it is on the classpath, and
- * <code>vanillabp.outbox.gruelbox.enabled</code> is there to switch it off again without
- * taking the dependency out. It needs Spring Data JPA and exactly one
- * {@link EntityManagerFactory} - it COEXISTS with the MongoDB
- * default: each workflow aggregate is served by the outbox matching its persistence
- * (selection per aggregate, see
- * {@link io.vanillabp.integration.spi.PhaseTwoOutboxAware}), so outbox
- * entries always ride the aggregate's own transaction even in mixed-persistence
- * applications. Disable via <code>vanillabp.outbox.jdbc.enabled</code> if no relational
+ * Auto-configuration of the {@link PhaseTwoOutbox} for aggregates persisted with JPA. It is backed
+ * by the <a href="https://github.com/gruelbox/transaction-outbox">gruelbox transaction-outbox</a>.
+ * Adding the dependency is all the wiring there is. As soon as this artifact is on the classpath,
+ * it takes the place of the store VanillaBP writes itself
+ * ({@link JdbcPhaseTwoOutboxAutoConfiguration}). <code>vanillabp.outbox.gruelbox.enabled</code>
+ * switches it off again without removing the dependency. It needs Spring Data JPA and exactly one
+ * {@link EntityManagerFactory}. It lives NEXT TO the MongoDB default. Each workflow aggregate is
+ * served by the outbox which matches its persistence (chosen per aggregate, see
+ * {@link io.vanillabp.integration.spi.PhaseTwoOutboxAware}). So outbox entries always join the
+ * transaction of the aggregate itself, also in applications with more than one kind of
+ * persistence. Switch it off with <code>vanillabp.outbox.jdbc.enabled</code> if no relational
  * outbox is wanted at all.
  * <p>
- * The outbox table is <code>TXNO_OUTBOX</code>, and it is gruelbox's own table with
- * gruelbox's own columns, so VanillaBP does not rename it:
- * <code>vanillabp.outbox.jdbc.table</code> names the table VanillaBP writes itself and
- * has no say here (see decision 3 in the repository's DECISIONS.md). An application
- * which needs another name builds the {@link TransactionOutbox} bean itself, under the
- * name {@value #DEFAULT_TRANSACTION_OUTBOX_BEAN_NAME}. The table is created
- * automatically via gruelbox's schema migration unless
- * <code>vanillabp.outbox.create-schema</code> is set to <code>false</code> (see the
- * this repository's <code>README.md</code> for managing the schema manually). Where that
- * migration is off, the table's existence is verified AT STARTUP (see
- * {@link #validateOutboxTableExists(DataSource)}), because this one table is
- * gruelbox's and therefore not covered by <code>io.vanillabp:vanillabp-schema</code>.
+ * The outbox table is <code>TXNO_OUTBOX</code>. It is the table of gruelbox, with the columns of
+ * gruelbox, so VanillaBP does not rename it. <code>vanillabp.outbox.jdbc.table</code> names the
+ * table VanillaBP writes itself and has no say here (see decision 3 in the repository's
+ * DECISIONS.md). An application which needs another name builds the {@link TransactionOutbox} bean
+ * itself, under the name {@value #DEFAULT_TRANSACTION_OUTBOX_BEAN_NAME}. The schema migration of
+ * gruelbox creates the table, unless <code>vanillabp.outbox.create-schema</code> is set to
+ * <code>false</code> (see the <code>README.md</code> of this repository for managing the schema by
+ * hand). If that migration is off, the table is checked AT STARTUP (see
+ * {@link #validateOutboxTableExists(DataSource)}). This one table belongs to gruelbox, so
+ * <code>io.vanillabp:vanillabp-schema</code> does not cover it.
  * <p>
- * <strong>Contract mapping (deviations):</strong> the {@link PhaseTwoOutbox} contract
- * is mapped onto gruelbox's native capabilities: idempotency keys become
- * <code>uniqueRequestId</code>s (unique constraint of <code>TXNO_OUTBOX</code>), "DONE
- * instead of delete" becomes gruelbox's retention of processed entries with a unique
- * request ID (<code>vanillabp.outbox.retention</code> maps to gruelbox's retention
- * threshold; expired entries are deleted by the background flush), and blocking after
- * <code>vanillabp.outbox.block-after-attempts</code> failed attempts is gruelbox's
- * native blocklisting. What gruelbox has no idea of is VanillaBP's classification of a
- * failure, so a failure the adapter calls permanent is blocked by a listener of
- * VanillaBP's ({@link GruelboxPhaseTwoFailureListener}), which also gives a blocked entry
- * an ERROR naming the workflow instead of only the entry id. That same listener writes the
- * short due time of a workflow which is not searchable yet, because gruelbox schedules
- * every failed attempt from the one distance it knows. It also takes back the attempt
- * gruelbox counted for such an answer, and blocks the entry once
- * <code>vanillabp.outbox.wait-for-visibility-at-most</code> passed. Two things this store cannot do and
- * the own stores can: its retry policy knows ONE fixed distance, so
- * <code>max-attempt-frequency</code> and the doubling it caps have no effect here, and a
+ * <strong>How the contract maps, and where it differs:</strong> the {@link PhaseTwoOutbox}
+ * contract maps onto what gruelbox can do by itself. Idempotency keys become
+ * <code>uniqueRequestId</code>s (a unique constraint of <code>TXNO_OUTBOX</code>). "DONE instead of
+ * delete" becomes the retention of gruelbox for processed entries with a unique request ID.
+ * <code>vanillabp.outbox.retention</code> maps to the retention of gruelbox, and the flush in the
+ * background deletes expired entries. Blocking after
+ * <code>vanillabp.outbox.block-after-attempts</code> failed attempts is the blocklist of gruelbox.
+ * Gruelbox knows nothing about how VanillaBP sorts failures. So a listener of VanillaBP
+ * ({@link GruelboxPhaseTwoFailureListener}) blocks a failure which the adapter calls permanent. It
+ * also gives a blocked entry an ERROR which names the workflow, not only the id of the entry. The
+ * same listener writes the short due time of a workflow which is not searchable yet, because
+ * gruelbox plans every failed attempt from the one distance it knows. It also takes back the
+ * attempt gruelbox counted for such an answer. And it blocks the entry once
+ * <code>vanillabp.outbox.wait-for-visibility-at-most</code> has passed. Two things this store
+ * cannot do, while the stores of VanillaBP can: its retry policy knows ONE fixed distance, so
+ * <code>max-attempt-frequency</code> and the doubling it caps have no effect here. And a
  * blocklisted entry holds its <code>uniqueRequestId</code> until the row is removed, so the
  * operation it failed at cannot be scheduled again in the meantime. The
- * {@link PhaseTwoCall#args()} map travels in its serialized
- * form because gruelbox's invocation serializer only accepts scalar parameter types
- * (see {@link GruelboxPhaseTwoDispatch}). What this store does like the own ones is
- * wait for VanillaBP: its {@link GruelboxRedispatchAwareSubmitter} keeps an entry
- * until the dispatcher below starts, so nothing is carried to a BPMS which has not
- * seen the models yet.
+ * {@link PhaseTwoCall#args()} map travels in its serialized form, because the invocation
+ * serializer of gruelbox accepts only scalar parameter types (see
+ * {@link GruelboxPhaseTwoDispatch}). Like the stores of VanillaBP, this store waits for
+ * VanillaBP. Its {@link GruelboxRedispatchAwareSubmitter} keeps an entry until the dispatcher below
+ * starts. So nothing is carried to a BPMS which has not seen the models yet.
  */
 @AutoConfiguration(
     before = JdbcPhaseTwoOutboxAutoConfiguration.class,
@@ -113,8 +107,8 @@ import jakarta.persistence.EntityManagerFactory;
 @ConditionalOnBean({
     DataSource.class, PlatformTransactionManager.class
 })
-// both keys have to hold: the first one switches every relational outbox off, the second
-// one this store alone
+// both keys have to hold: the first one switches off every relational outbox, the
+// second one only this store
 @ConditionalOnBooleanProperty(
     name = {
         "vanillabp.outbox.jdbc.enabled", GruelboxOutboxProperties.ENABLED
@@ -126,62 +120,61 @@ import jakarta.persistence.EntityManagerFactory;
 public class GruelboxPhaseTwoOutboxAutoConfiguration {
 
   /**
-   * The name this store's outbox bean goes by, which is the name VanillaBP gives the
-   * outbox of every relational workflow aggregate.
+   * The name of the outbox bean of this store. VanillaBP gives this name to the outbox of every
+   * relational workflow aggregate.
    * <p>
-   * Taking that name is the whole wiring. VanillaBP's resolver attributes a JPA-persisted
-   * aggregate to the bean of this name, and the store VanillaBP writes itself steps back
-   * where the name is already taken, because its auto-configuration is
-   * {@link ConditionalOnMissingBean} and this one is applied before it. So an application
-   * which adds this artifact runs this store and keeps everything else it configured.
+   * Taking that name is all the wiring there is. The resolver of VanillaBP gives an aggregate
+   * persisted with JPA to the bean of this name. The store VanillaBP writes itself steps back if
+   * the name is already taken, because its auto-configuration is {@link ConditionalOnMissingBean}
+   * and this one is applied before it. So an application which adds this artifact runs this store
+   * and keeps everything else it configured.
    */
   public static final String DEFAULT_OUTBOX_BEAN_NAME = JdbcPhaseTwoOutboxAutoConfiguration.DEFAULT_OUTBOX_BEAN_NAME;
 
   /**
-   * The name of the default gruelbox {@link TransactionOutbox} bean. The default's
-   * beans reference each other BY NAME so an application may define additional
-   * gruelbox instances (e.g. a dedicated outbox on its own table for a high-load
-   * process) without suppressing or confusing the default.
+   * The name of the default gruelbox {@link TransactionOutbox} bean. The beans of the default refer
+   * to each other BY NAME. So an application may define more gruelbox instances, e.g. an outbox
+   * on its own table for a process under high load, without hiding or confusing the default.
    */
   public static final String DEFAULT_TRANSACTION_OUTBOX_BEAN_NAME = "vanillaBpTransactionOutbox";
 
   /**
-   * The name of the submitter the default outbox hands its entries to. It is a bean of
-   * its own because the dispatcher needs the very submitter the outbox was built with:
-   * it is the one which holds entries back until dispatching starts.
+   * The name of the submitter the default outbox hands its entries to. It is a bean of its own,
+   * because the dispatcher needs the same submitter the outbox was built with. That submitter holds
+   * entries back until dispatching starts.
    */
   public static final String DEFAULT_SUBMITTER_BEAN_NAME = "vanillaBpGruelboxSubmitter";
 
   /**
-   * The name of the store holding the payloads of the calls which carry one. A bean of
-   * its own so the outbox, the dispatch and the housekeeping all use the same one, and
-   * so an application may replace it.
+   * The name of the store which holds the payloads of the calls which carry one. It is a bean of
+   * its own, so the outbox, the dispatch and the housekeeping all use the same one. And an
+   * application may replace it.
    */
   public static final String DEFAULT_PAYLOAD_STORE_BEAN_NAME = "vanillaBpGruelboxPhaseTwoPayloadStore";
 
   /**
-   * The name of the bean holding the housekeeping claim of this outbox. It is named
-   * because the dispatcher asks for it by name, the way it asks for the payload store.
+   * The name of the bean which holds the housekeeping claim of this outbox. It has a name, because
+   * the dispatcher asks for it by name, the way it asks for the payload store.
    */
   public static final String DEFAULT_HOUSEKEEPING_LEASE_BEAN_NAME = "vanillaBpGruelboxHousekeepingLease";
 
   /**
-   * The table gruelbox stores outbox entries in. It is the name the library itself
-   * defaults to and the only table its schema migration ever creates, which is why it
-   * stands here as a constant instead of coming from a VanillaBP property.
+   * The table gruelbox stores outbox entries in. It is the default name of the library, and the
+   * only table its schema migration ever creates. That is why it is a constant here, and not a
+   * VanillaBP property.
    */
   public static final String DEFAULT_OUTBOX_TABLE_NAME = "TXNO_OUTBOX";
 
   /**
-   * Built by Spring Boot while it applies its auto-configurations, and only where the
-   * conditions above hold. Nothing in VanillaBP builds it.
+   * Spring Boot creates it while it applies its auto-configurations, and only if the conditions
+   * above hold. Nothing in VanillaBP creates it.
    */
   public GruelboxPhaseTwoOutboxAutoConfiguration() {
   }
 
   /**
-   * The submitter of the default outbox: it carries "this entry was attempted before"
-   * to the dispatch bean and it keeps entries until VanillaBP starts dispatching (see
+   * The submitter of the default outbox. It carries "this entry was attempted before" to the
+   * dispatch bean, and it keeps entries until VanillaBP starts dispatching (see
    * {@link GruelboxRedispatchAwareSubmitter}).
    *
    * @return The submitter
@@ -195,22 +188,21 @@ public class GruelboxPhaseTwoOutboxAutoConfiguration {
   }
 
   /**
-   * The gruelbox {@link TransactionOutbox} enlisting entries in Spring-managed JDBC
-   * transactions and instantiating the scheduled {@link GruelboxPhaseTwoDispatch}
-   * from the application context.
+   * The gruelbox {@link TransactionOutbox}. It enlists entries in JDBC transactions which Spring
+   * manages, and it gets the scheduled {@link GruelboxPhaseTwoDispatch} from the application
+   * context.
    *
-   * @param applicationContext Used to resolve the scheduled bean at dispatch time
-   * @param transactionManagers All Spring transaction managers; entries are
-   *          enlisted with the JDBC/JPA one (see
-   *          {@link #selectJdbcTransactionManager(Map)})
-   * @param dataSource The data source storing the outbox table
-   * @param vanillaBpProperties The bound <code>vanillabp.*</code> tree carrying the
-   *          <code>vanillabp.outbox</code> section (registered here as well so the
-   *          outbox works in contexts without the full VanillaBP auto-configuration)
-   * @param metrics Provider of what a blocked entry is counted into; Micrometer is
-   *          optional, so the bean may legitimately be absent
-   * @param applicationListeners The outbox listeners the application brings, which keep
-   *          being called next to VanillaBP's own one
+   * @param applicationContext Finds the scheduled bean at dispatch time
+   * @param transactionManagers All Spring transaction managers. Entries are enlisted with the
+   *          JDBC/JPA one (see {@link #selectJdbcTransactionManager(Map)})
+   * @param dataSource The data source which holds the outbox table
+   * @param vanillaBpProperties The bound <code>vanillabp.*</code> tree with the
+   *          <code>vanillabp.outbox</code> section. It is registered here as well, so the outbox
+   *          works in contexts without the full VanillaBP auto-configuration
+   * @param metrics Provides what a blocked entry is counted into. Micrometer is optional, so the
+   *          bean may be missing
+   * @param applicationListeners The outbox listeners the application brings. They are still
+   *          called, next to the one of VanillaBP
    * @param submitter The submitter of this outbox
    * @return The transaction outbox
    */
@@ -230,7 +222,7 @@ public class GruelboxPhaseTwoOutboxAutoConfiguration {
     if (!migrate) {
       validateOutboxTableExists(dataSource);
     }
-    // the persistor and the transaction manager are held as locals because the listener
+    // the persistor and the transaction manager are local variables, because the listener
     // needs both to write the blocked flag of an entry gruelbox would keep retrying
     final var persistor = DefaultPersistor
         .builder()
@@ -246,8 +238,8 @@ public class GruelboxPhaseTwoOutboxAutoConfiguration {
         .persistor(persistor)
         .listener(
             outboxListener(persistor, transactionManager, metrics, applicationListeners, properties))
-        // carries "this entry was attempted before" to the dispatch bean and keeps
-        // entries until VanillaBP dispatches (see the submitter's javadoc)
+        // carries "this entry was attempted before" to the dispatch bean, and keeps
+        // entries until VanillaBP dispatches (see the javadoc of the submitter)
         .submitter(submitter)
         .attemptFrequency(properties.getAttemptFrequency())
         .blockAfterAttempts(properties.getBlockAfterAttempts())
@@ -258,18 +250,17 @@ public class GruelboxPhaseTwoOutboxAutoConfiguration {
   }
 
   /**
-   * The listener the outbox reports its failures to: VanillaBP's own one, followed by
-   * whatever listeners the application defined. Gruelbox takes exactly one, so the
-   * application's are chained behind VanillaBP's rather than replacing it - an
-   * application which listens to its outbox keeps hearing everything it heard before.
+   * The listener the outbox reports its failures to: the one of VanillaBP, followed by the
+   * listeners the application defined. Gruelbox takes exactly one listener. So the listeners of the
+   * application are chained behind the one of VanillaBP, and they do not replace it. An application
+   * which listens to its outbox keeps hearing everything it heard before.
    *
    * @param persistor The persistor of this outbox
    * @param transactionManager The transaction manager of this outbox
    * @param metrics Provider of what a blocked entry is counted into
    * @param applicationListeners The listeners the application brings
-   * @param properties The settings of <code>vanillabp.outbox</code>: the attempt budget,
-   *          and how long an entry may wait for a BPMS which does not report its workflow
-   *          yet
+   * @param properties The settings of <code>vanillabp.outbox</code>: the attempt budget, and how
+   *          long an entry may wait for a BPMS which does not report its workflow yet
    * @return The listener to hand to the outbox
    */
   private static TransactionOutboxListener outboxListener(
@@ -290,27 +281,26 @@ public class GruelboxPhaseTwoOutboxAutoConfiguration {
   }
 
   /**
-   * Where the payload of a phase-two call which carries one is stored while its
-   * gruelbox entry waits. gruelbox keeps a call as one serialized invocation and its
-   * table belongs to gruelbox, so the bytes cannot travel in the entry - they lie in a
-   * table of VanillaBP's own and the entry names them: a payload lies beside its entry
-   * because a row of gruelbox' table has no room for it.
+   * Where the payload of a phase-two call is stored while its gruelbox entry waits. Gruelbox keeps
+   * a call as one serialized invocation, and its table belongs to gruelbox. So the bytes cannot
+   * travel in the entry. They are kept in a table of VanillaBP, and the entry names them. A row of
+   * the gruelbox table has no room for a payload.
    * <p>
-   * The connection is the one Spring binds to the running transaction, so a payload
-   * becomes visible exactly when the entry does. The table is created at startup unless
-   * <code>vanillabp.outbox.create-schema</code> is disabled, in which case its
-   * existence is verified instead.
+   * The connection is the one Spring binds to the running transaction. So a payload becomes
+   * visible exactly when the entry does. The table is created at startup, unless
+   * <code>vanillabp.outbox.create-schema</code> is switched off. Then the table is checked
+   * instead.
    * <p>
-   * The name is resolved by {@link JdbcPhaseTwoOutboxStore#payloadTableName}, like the
-   * name of the payload table of VanillaBP's own JDBC outbox. So it follows
-   * <code>vanillabp.outbox.jdbc.payload-table</code> and, where that is unset, the name
-   * behind <code>vanillabp.outbox.jdbc.table</code> plus a suffix. Neither key says
-   * anything about gruelbox' own <code>TXNO_OUTBOX</code>: that table belongs to the
-   * library, while this one belongs to VanillaBP.
+   * {@link JdbcPhaseTwoOutboxStore#payloadTableName} finds the name, like the name of the payload
+   * table of the JDBC outbox of VanillaBP. So it follows
+   * <code>vanillabp.outbox.jdbc.payload-table</code>. If that is not set, it is the name behind
+   * <code>vanillabp.outbox.jdbc.table</code> plus a suffix. Neither key says anything about the
+   * <code>TXNO_OUTBOX</code> of gruelbox. That table belongs to the library, and this one belongs
+   * to VanillaBP.
    *
    * @param dataSource The data source the payload table lives in
-   * @param vanillaBpProperties The bound <code>vanillabp.*</code> tree, naming the
-   *          table where the application configured one of its own
+   * @param vanillaBpProperties The bound <code>vanillabp.*</code> tree. It names the table if the
+   *          application configured one of its own
    * @return The payload store of the default gruelbox outbox
    */
   @Bean(DEFAULT_PAYLOAD_STORE_BEAN_NAME)
@@ -325,9 +315,9 @@ public class GruelboxPhaseTwoOutboxAutoConfiguration {
           @Override
           public Connection acquire() {
 
-            // bound to the Spring-managed transaction if one is running (which the
-            // write requires) - a plain connection of the pool otherwise, used by the
-            // reads of the dispatch and by the housekeeping
+            // bound to the transaction Spring manages, if one runs (the write needs
+            // one). Otherwise a plain connection of the pool, which the reads of the
+            // dispatch and the housekeeping use
             return DataSourceUtils.getConnection(dataSource);
 
           }
@@ -340,8 +330,8 @@ public class GruelboxPhaseTwoOutboxAutoConfiguration {
 
           }
         }, payloadTable,
-        // gruelbox owns its table and keeps a call as one serialized invocation, so
-        // there is no column to join on: the housekeeping looks for the reference
+        // gruelbox owns its table and keeps a call as one serialized invocation. So
+        // there is no column to join on. The housekeeping looks for the reference
         // inside that text, which costs a scan of the entries (see decision 3 in the
         // repository's DECISIONS.md)
         JdbcPhaseTwoPayloadStore.EntriesNamingTheirPayload
@@ -356,16 +346,15 @@ public class GruelboxPhaseTwoOutboxAutoConfiguration {
   }
 
   /**
-   * The phase-two outbox of every workflow aggregate this application persists in its
-   * relational database. Spring builds it INSTEAD OF the store VanillaBP writes itself,
-   * because this artifact is on the classpath and there is exactly one
-   * {@link EntityManagerFactory}; an aggregate living in MongoDB is served by the MongoDB
-   * outbox beside it. Why this store is offered at all is decision 2 in the repository's
-   * DECISIONS.md.
+   * The phase-two outbox of every workflow aggregate this application persists in its relational
+   * database. Spring builds it INSTEAD OF the store VanillaBP writes itself, because this artifact
+   * is on the classpath and there is exactly one {@link EntityManagerFactory}. An aggregate in
+   * MongoDB is served by the MongoDB outbox next to it. Decision 2 in the repository's DECISIONS.md
+   * says why this store is offered at all.
    *
    * @param transactionOutbox The gruelbox transaction outbox
-   * @param dataSource The data source holding gruelbox' table, used to count the
-   *          entries waiting for their dispatch
+   * @param dataSource The data source which holds the table of gruelbox. It counts the entries
+   *          which wait for their dispatch
    * @param payloadStore Where the payload of a call which carries one is written
    * @return The {@link PhaseTwoOutbox} used by the process services
    */
@@ -381,15 +370,14 @@ public class GruelboxPhaseTwoOutboxAutoConfiguration {
   }
 
   /**
-   * The bean invoked by the outbox at dispatch time (resolved by gruelbox's
-   * <code>SpringInstantiator</code> as the unique bean of type
-   * {@link GruelboxPhaseTwoDispatch}). It rebuilds the {@link PhaseTwoCall} and
-   * routes it through the core's {@link PhaseTwoRouter}.
+   * The bean the outbox calls at dispatch time. The <code>SpringInstantiator</code> of gruelbox
+   * finds it as the only bean of type {@link GruelboxPhaseTwoDispatch}. It builds the
+   * {@link PhaseTwoCall} again and hands it to the {@link PhaseTwoRouter} of the core.
    *
-   * @param phaseTwoRouter Provider of the router dispatched to
+   * @param phaseTwoRouter Provides the router the call is handed to
    * @param payloadStore Where the payload of an entry which names one is read from
-   * @param metrics Provider of what the wait of a dispatched entry is reported to;
-   *          Micrometer is optional, so the bean may legitimately be absent
+   * @param metrics Provides where the wait of a dispatched entry is reported. Micrometer is
+   *          optional, so the bean may be missing
    * @return The dispatch bean
    */
   @Bean
@@ -414,15 +402,15 @@ public class GruelboxPhaseTwoOutboxAutoConfiguration {
   }
 
   /**
-   * Where this node says that it is house-keeping the payloads of this outbox tonight.
+   * Where this node says that it cleans up the payloads of this outbox tonight.
    * <p>
-   * gruelbox deletes its own dispatched entries, so what the window governs here is the
-   * payload table alone - but that table is VanillaBP's, and two nodes sweeping it at the
-   * same time would each measure the other's work.
+   * Gruelbox deletes its own dispatched entries. So here the window only decides about the payload
+   * table. But that table belongs to VanillaBP. If two nodes cleaned it up at the same time, each
+   * would measure the work of the other.
    *
    * @param dataSource The data source the claim lives in
-   * @param vanillaBpProperties The bound <code>vanillabp.*</code> tree, naming the table
-   *          where the application configured one of its own
+   * @param vanillaBpProperties The bound <code>vanillabp.*</code> tree. It names the table if the
+   *          application configured one of its own
    * @return The claim of this outbox
    */
   @Bean(DEFAULT_HOUSEKEEPING_LEASE_BEAN_NAME)
@@ -446,26 +434,26 @@ public class GruelboxPhaseTwoOutboxAutoConfiguration {
   }
 
   /**
-   * What flushes gruelbox: it dispatches the entries a crashed instance left behind, gives
-   * a failed one its next attempt once the due time passed, and deletes what the retention
-   * released. It also opens the gate of the submitter, so nothing reaches a BPMS before the
-   * models did.
+   * What flushes gruelbox. It dispatches the entries a crashed instance left behind. It gives a
+   * failed entry its next attempt once the due time has passed. And it deletes what the retention
+   * let go. It also opens the gate of the submitter, so nothing reaches a BPMS before the models
+   * did.
    *
    * @param transactionOutbox The gruelbox transaction outbox
-   * @param vanillaBpProperties The bound <code>vanillabp.*</code> tree carrying the
-   *          <code>vanillabp.outbox</code> section (registered here as well so the
-   *          outbox works in contexts without the full VanillaBP auto-configuration)
-   * @param submitter The submitter the outbox was built with, held back until this
+   * @param vanillaBpProperties The bound <code>vanillabp.*</code> tree with the
+   *          <code>vanillabp.outbox</code> section. It is registered here as well, so the outbox
+   *          works in contexts without the full VanillaBP auto-configuration
+   * @param submitter The submitter the outbox was built with. It is held back until this
    *          dispatcher starts polling
-   * @param outbox The store, asked when the next flush has something to do so the poller
+   * @param outbox The store. It is asked when the next flush has something to do, so the poller
    *          can sleep until then
-   * @param payloadStore Where the payloads of the entries a flush finished are removed, and
-   *          with them what a crash between the two writes of a schedule left behind
-   * @param housekeepingLease Where this node says that it is house-keeping tonight
+   * @param payloadStore Where the payloads of the entries a flush finished are removed. That also
+   *          removes what a crash between the two writes of a schedule left behind
+   * @param housekeepingLease Where this node says that it cleans up tonight
    * @param metrics What the numbers of a closed housekeeping window are published to
-   * @return The dispatcher polling the outbox for recovery, retries and retention
-   *         cleanup (private single-thread executor - no
-   *         {@link org.springframework.scheduling.TaskScheduler} involved)
+   * @return The dispatcher which polls the outbox for recovery, retries and the cleanup of the
+   *         retention. It runs on a private executor with one thread, without a
+   *         {@link org.springframework.scheduling.TaskScheduler}
    */
   @Bean
   public GruelboxPhaseTwoOutboxDispatcher vanillaBpGruelboxPhaseTwoOutboxDispatcher(
@@ -485,11 +473,10 @@ public class GruelboxPhaseTwoOutboxAutoConfiguration {
   }
 
   /**
-   * Selects the transaction manager the outbox entries are enlisted with: the JDBC
-   * one - the same transaction persisting JPA workflow aggregates. In
-   * mixed-persistence applications a second (e.g. MongoDB) transaction manager
-   * exists; the JDBC/JPA one is identified by Spring Boot's conventional bean name
-   * <code>transactionManager</code>.
+   * Selects the transaction manager the outbox entries are enlisted with. It is the JDBC one,
+   * whose transaction also persists the JPA workflow aggregates. An application with more than one
+   * kind of persistence has a second transaction manager (e.g. for MongoDB). The JDBC/JPA one is
+   * found by the usual Spring Boot bean name <code>transactionManager</code>.
    *
    * @param transactionManagers All transaction managers, keyed by bean name
    * @return The JDBC/JPA transaction manager
@@ -520,15 +507,13 @@ public class GruelboxPhaseTwoOutboxAutoConfiguration {
   }
 
   /**
-   * Verifies that the outbox table exists where gruelbox's schema migration is switched
-   * off by <code>vanillabp.outbox.create-schema</code>, which an application applying its
-   * schema itself does.
+   * Checks that the outbox table exists, if <code>vanillabp.outbox.create-schema</code> switched
+   * off the schema migration of gruelbox. An application which applies its schema itself does that.
    * <p>
-   * Unlike VanillaBP's own tables this one belongs to gruelbox, so the message points to
-   * gruelbox for the statements instead of to
-   * <code>io.vanillabp:vanillabp-schema</code>. Without the check a missing table surfaces
-   * at the first workflow started on a remote BPMS, hours after a deployment which booted
-   * cleanly.
+   * This table belongs to gruelbox, unlike the tables of VanillaBP. So the message points to
+   * gruelbox for the statements, not to <code>io.vanillabp:vanillabp-schema</code>. Without the
+   * check, a missing table shows up at the first workflow started on a remote BPMS, hours after a
+   * deployment which started cleanly.
    *
    * @param dataSource The data source holding the outbox table
    * @throws IllegalStateException If the table is missing
@@ -562,10 +547,10 @@ public class GruelboxPhaseTwoOutboxAutoConfiguration {
   }
 
   /**
-   * Detects the gruelbox SQL dialect from the data source's metadata.
-   *
-   * Package-private so the mapping and the message for an unsupported database can be
-   * asserted without a database of each product.
+   * Finds the gruelbox SQL dialect from the metadata of the data source.
+   * <p>
+   * It is package-private, so a test can check the mapping and the message for an unsupported
+   * database without a database of each product.
    *
    * @param dataSource The data source used for the outbox table
    * @return The dialect
