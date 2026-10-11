@@ -126,10 +126,10 @@ instead of `consequently`. A technical term stays a technical term, but say what
 time it turns up, and write an abbreviation out once. If a sentence trips you up when you read it
 aloud, rewrite it.
 
-This holds for every English text here, the javadoc, the commit message and the pull request
-included. Nothing a program reads is renamed for the sake of language: type and method names,
-configuration keys and artifact coordinates stay as they are, because code in other repositories
-points at them.
+This holds for every English text here, the javadoc and comments, in the main code and in the
+tests, the commit message and the pull request included. Nothing a program reads is renamed for
+the sake of language: type and method names, configuration keys and artifact coordinates stay as
+they are, because code in other repositories points at them.
 
 The section "How we write" in [`AGENTS.md`](./AGENTS.md) has the same rule, with examples from this
 repository of a sentence before and after it was rewritten.
