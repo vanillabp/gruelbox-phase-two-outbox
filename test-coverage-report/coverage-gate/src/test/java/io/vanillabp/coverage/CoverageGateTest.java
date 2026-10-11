@@ -14,32 +14,32 @@ import io.vanillabp.integration.test.utils.CoverageGate;
 import io.vanillabp.integration.test.utils.PrintsWhenPassing;
 
 /**
- * The coverage gate: it breaks the build when the aggregated coverage drops below the
- * threshold, so a drop is noticed while it happens instead of a year later. The threshold
- * is 85 in every VanillaBP repository while the rule is 90, which keeps one repository's
- * bad week from being answered by editing the number.
+ * The coverage gate. It breaks the build when the combined coverage drops below the threshold.
+ * So a drop is noticed when it happens, not a year later. The threshold is 85 in every VanillaBP
+ * repository, while the rule is 90. So a bad week in one repository is not answered by editing
+ * the number.
  * <p>
- * JaCoCo's own <code>check</code> goal cannot do this: it judges ONE module's classes
- * against ONE execution-data file, while the number of this repository comes from an
- * aggregated report spanning several modules. So the gate reads exactly the report which
- * is published, and report and gate can never disagree.
+ * The <code>check</code> goal of JaCoCo cannot do this. It judges the classes of one module
+ * against one file of execution data. The number of this repository comes from a combined
+ * report over several modules. So the gate reads exactly the report which is published, and
+ * report and gate can never disagree.
  * <p>
- * One platform is measured here. Every other VanillaBP repository measures two and keeps
- * them strictly apart, because a Spring test saying nothing about Quarkus code must not
- * lift the Quarkus number. This store runs on Spring Boot alone - gruelbox enlists an
- * entry through the Spring transaction manager - so there is no second number, and the
- * layout of the reports stays the one every repository uses.
+ * One platform is measured here. Every other VanillaBP repository measures two and keeps them
+ * strictly apart, because a Spring test which says nothing about Quarkus code must not lift the
+ * Quarkus number. This store runs on Spring Boot only, because gruelbox enlists an entry through
+ * the Spring transaction manager. So there is no second number, and the layout of the reports
+ * stays the one every repository uses.
  * <p>
- * The completeness test comes first for a reason: a threshold checked against an
- * incomplete aggregate fails builds for coverage which exists and is only not counted,
- * and nobody can fix that by writing a test.
+ * The completeness test comes first for a reason. A threshold checked against an incomplete
+ * report fails builds for coverage which exists but is not counted. Nobody can fix that by
+ * writing a test.
  * <p>
- * This is the one test class in VanillaBP which prints while it passes, and therefore the
- * one without {@code SuppressOutputExtension}. Everywhere else a passing test says nothing,
- * because output nobody reads hides the output somebody has to. Here the passing run IS the
- * measurement: it is the only place the build states where this repository stands against
- * the rule, and a repository sitting between the threshold and the rule has a gap which
- * would otherwise be visible only to whoever opens the report.
+ * This is the one test class in VanillaBP which prints while it passes. So it is the one without
+ * {@code SuppressOutputExtension}. Everywhere else a passing test says nothing, because output
+ * nobody reads hides the output somebody has to read. Here the passing run is the measurement. It
+ * is the only place where the build says where this repository stands against the rule. A
+ * repository between the threshold and the rule has a gap. Without this output, only somebody who
+ * opens the report would see it.
  */
 @PrintsWhenPassing(
   "the measurement is the result - what the suite reached belongs in the log of every "
@@ -50,23 +50,23 @@ public class CoverageGateTest {
   private static final Path ROOT = CoverageGate.repositoryRoot("coverage.repository.root");
 
   /**
-   * What a report is expected to show, as opposed to the threshold, which is where the
-   * build stops. Reported on every run, never asserted: a build breaking at the rule
-   * would leave a repository nothing to do but edit the rule.
+   * What a report is expected to show. The threshold is something else: the build stops
+   * there. The rule is printed on every run but never asserted. If the build broke at the
+   * rule, a repository could do nothing but edit the rule.
    */
   private static final double RULE = Double.parseDouble(System.getProperty("coverage.rule"));
 
   /**
-   * The command line this build was started with, handed over by the module's Surefire
-   * configuration. It answers the one question the gate cannot read off the disk:
-   * whether this run writes the report at all.
+   * The command line this build was started with. The Surefire configuration of the module
+   * hands it over. It answers the one question the gate cannot read from the disk: does
+   * this run write the report at all.
    */
   private static final String MAVEN_COMMAND_LINE = System.getProperty("coverage.maven.command", "");
 
   /**
-   * Where the Spring Boot report lies among the paths {@link CoverageGate} resolves. It
-   * knows the layout every VanillaBP repository uses, Spring Boot first, so asking it
-   * keeps this repository on that layout while measuring the one platform it has.
+   * Where the Spring Boot report is among the paths {@link CoverageGate} resolves. It knows
+   * the layout every VanillaBP repository uses, with Spring Boot first. So this repository
+   * keeps that layout, while it measures the one platform it has.
    */
   private static final int SPRING_BOOT = 0;
 
@@ -74,9 +74,9 @@ public class CoverageGateTest {
       .of(ROOT.resolve("test-coverage-report/spring-boot/pom.xml"));
 
   /**
-   * Modules whose execution data belongs to no coverage report. Each entry is a
-   * decision - a module missing here and missing from the aggregate is the defect
-   * this test exists for.
+   * Modules whose execution data belongs to no coverage report. Each entry is a decision.
+   * A module which is missing here and missing from the report is the defect this test
+   * exists for.
    */
   private static final Set<String> DELIBERATELY_NOT_AGGREGATED = Set.of();
 
@@ -100,14 +100,14 @@ public class CoverageGateTest {
   }
 
   /**
-   * A run which stops before <code>verify</code> writes no report, and the gate says so
-   * and skips instead of failing over a file this run could not have written. It stays
-   * loud about it: the line is printed and the test is reported as skipped, so nobody
-   * reads a green run as a checked one.
+   * A run which stops before <code>verify</code> writes no report. The gate says so and
+   * skips. It does not fail over a file this run could not have written. But it stays loud
+   * about it. The line is printed and the test is reported as skipped, so nobody reads a
+   * green run as a checked one.
    * <p>
-   * The threshold holds the same 85 in every VanillaBP repository, and that number is the
-   * floor against regression rather than the goal: the rule is the {@code coverage.rule}
-   * property, and a repository between the two has a gap somebody still owes a test for.
+   * The threshold holds the same 85 in every VanillaBP repository. That number is the floor
+   * against regression, not the goal. The goal is the {@code coverage.rule} property. A
+   * repository between the two has a gap somebody still owes a test for.
    *
    * @param platform The name of the platform measured, used in what is printed
    * @param report Which of the report paths {@link CoverageGate} resolves is read
@@ -150,7 +150,7 @@ public class CoverageGateTest {
 
   /**
    * The line a passing run leaves behind. It names both numbers, because the one which
-   * breaks the build is not the one to aim at, and it says how far the suite is from the
+   * breaks the build is not the one to aim at. It says how far the suite is from the
    * rule while that distance is still small enough to close.
    *
    * @param coverage What the report showed
