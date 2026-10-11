@@ -9,8 +9,8 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * A JPA workflow aggregate having a generated (non-string) ID: the outbox has to
- * serialize the ID as a string and the phase-two bean has to convert it back.
+ * A JPA workflow aggregate with a generated ID which is not a string. The outbox has to
+ * serialize the ID as a string, and the phase-two bean has to convert it back.
  */
 @Entity
 @Table(name = "OUTBOX_TEST_AGGREGATE")
@@ -25,8 +25,8 @@ public class Aggregate {
   private String content;
 
   /**
-   * What a handler of the extension writes while it reports. Separate from the content so
-   * a test can tell the write of the application apart from the write of a handler.
+   * What a handler of the extension writes while it reports. It is kept apart from the content, so
+   * a test can tell the write of the application from the write of a handler.
    */
   private String reported;
 

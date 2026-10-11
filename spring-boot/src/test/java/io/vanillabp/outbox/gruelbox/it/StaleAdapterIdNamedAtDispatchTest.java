@@ -18,17 +18,18 @@ import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 import io.vanillabp.spi.process.ProcessService;
 
 /**
- * An adapter id which a waiting outbox entry names although the configuration does not.
+ * Holds how this store reports an adapter id which a waiting outbox entry names, but the
+ * configuration does not.
  * <p>
- * The stores VanillaBP writes itself keep the id in a column and name it while the
- * application boots. Gruelbox keeps a call as a serialized invocation, so the boot cannot
- * ask without reading the whole table. It answers at the first dispatch instead, where the
- * entry is read anyway, and it says what the boot of the other stores says - see decision 2
- * in the repository's DECISIONS.md.
+ * The stores VanillaBP writes itself keep the id in a column, and they name it while the
+ * application starts. Gruelbox keeps a call as a serialized invocation. So the start cannot ask
+ * without reading the whole table. This store answers at the first dispatch instead, where the
+ * entry is read anyway. It says what the start of the other stores says; see decision 2 in the
+ * repository's DECISIONS.md.
  * <p>
- * Two contexts on one database: the first runs with an adapter 'old-bpms' at first priority
- * and leaves an entry of it undispatched, the second does not configure that adapter at all.
- * The entry the second one recovers is the stale one a renamed or a removed adapter leaves
+ * Two contexts run on one database. The first runs with an adapter 'old-bpms' at first priority
+ * and leaves an entry of it undispatched. The second does not configure that adapter at all. The
+ * entry which the second one recovers is the stale one which a renamed or removed adapter leaves
  * behind.
  */
 @ExtendWith(SuppressOutputExtension.class)
@@ -36,31 +37,31 @@ import io.vanillabp.spi.process.ProcessService;
 public class StaleAdapterIdNamedAtDispatchTest {
 
   /**
-   * A database of this test's own, kept alive between the two contexts. Sharing it would
-   * hand the second context entries another test wrote, and the entry this test is about
-   * would no longer be the only stale one.
+   * A database which only this test uses, kept alive between the two contexts. Sharing it would
+   * hand the second context entries which another test wrote. The entry this test is about would
+   * then no longer be the only stale one.
    */
   private static final String DATASOURCE_URL = "jdbc:h2:mem:outbox-stale-adapter;DB_CLOSE_DELAY=-1";
 
   private static final String STALE_ADAPTER = "old-bpms";
 
   /**
-   * How often the entry has to be attempted before the count of reports is asked for.
-   * Four, because the first attempt is the one which reports and three more of them are
-   * enough to show that the report does not come back with every attempt.
+   * How often the entry has to be attempted before the reports are counted. It is four. The first
+   * attempt reports, and three more are enough to show that the report does not come back with
+   * every attempt.
    */
   private static final int ATTEMPTS_WORTH_ONE_REPORT = 4;
 
   /**
-   * What the report names, which is the adapter id and the reading an application has to
-   * choose between.
+   * What the report names: the adapter id, and the two readings an application has to choose
+   * between.
    */
   private static final String THE_REPORT_NAMING_IT = "The adapter id '%s' is NOT configured any more"
       .formatted(STALE_ADAPTER);
 
   /**
-   * The application as the first context runs it: an adapter nobody has heard of yet is
-   * configured and prioritized, so the workflow starts there and its entry names it.
+   * The application as the first context runs it. An adapter which nobody has heard of yet is
+   * configured and comes first. So the workflow starts there, and its entry names it.
    *
    * @param pollInterval How long the store waits between two polls
    * @return The running application context
@@ -78,7 +79,7 @@ public class StaleAdapterIdNamedAtDispatchTest {
   }
 
   /**
-   * The application as it is configured from here on: the adapter of the entry is gone.
+   * The application as it is configured from here on. The adapter of the entry is gone.
    *
    * @param pollInterval How long the store waits between two polls
    * @return The running application context
@@ -108,7 +109,7 @@ public class StaleAdapterIdNamedAtDispatchTest {
   }
 
   /**
-   * How often the given text stands in what the application wrote.
+   * How often the given text occurs in what the application wrote.
    */
   private static int occurrencesOf(
       final String text,
@@ -130,8 +131,8 @@ public class StaleAdapterIdNamedAtDispatchTest {
   public void theStaleAdapterIdIsNamedAtTheFirstDispatch(
       final CapturedOutput output) throws Exception {
 
-    // the first context leaves an entry of 'old-bpms' behind: its dispatch fails and the
-    // poll interval is too long for a second attempt, which is the shape of a crash
+    // the first context leaves an entry of 'old-bpms' behind. Its dispatch fails, and the
+    // poll interval is too long for a second attempt. That looks like a crash
     try (var context = runWithTheAdapterWhichGoesAway("PT1H")) {
       final var listener = context.getBean(RecordingPhaseTwoListener.class);
       listener.failNextDispatches(Integer.MAX_VALUE);
@@ -147,7 +148,7 @@ public class StaleAdapterIdNamedAtDispatchTest {
       });
       assertNotNull(attachedAggregate);
       listener.awaitInvocations(1, 10000);
-      // the failed attempt has to be written before the context goes away, otherwise the
+      // the failed attempt has to be written before the context goes away. Otherwise the
       // second context meets an entry which was never dispatched
       FailedAttempts.awaitWrittenDown(context, 1);
       assertEquals(
@@ -173,11 +174,11 @@ public class StaleAdapterIdNamedAtDispatchTest {
           output.getAll().contains("waiting phase-two outbox entries"),
           "and it names what is left over, as a boot of the other stores does");
 
-      // the entry is attempted again every 'attempt-frequency', so a report per attempt
-      // would be a line every half second for as long as the application runs. The
-      // attempts are read from the store instead of waited for: a wait would pass on a
-      // machine where the dispatcher never came back, which is the one case this must
-      // not call green
+      // the entry is attempted again every 'attempt-frequency'. So a report per attempt
+      // would be a line every half second, for as long as the application runs. The
+      // attempts are read from the store, not just waited for. A plain wait would pass on
+      // a machine where the dispatcher never came back, and that is the one case this
+      // must not call green
       FailedAttempts.awaitAttemptsOfAWaitingEntry(context, ATTEMPTS_WORTH_ONE_REPORT);
       assertEquals(
           1,

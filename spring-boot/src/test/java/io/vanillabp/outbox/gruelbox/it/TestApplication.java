@@ -6,27 +6,26 @@ import org.springframework.context.annotation.Bean;
 import io.vanillabp.integration.spi.PhaseOperationRegistry;
 
 /**
- * The application the tests of this store boot: the BPMS double is forced to require a
- * two-phase commit for starting a workflow (property
- * <code>dummy-adapter.at-least-once-delivery</code>), a {@link RecordingPhaseTwoListener}
- * observes and can fail phase two, and a {@link SampleExtension} stands in for an
- * extension which schedules an operation of its own.
+ * The application which the tests of this store start. The BPMS double has to use a two-phase
+ * commit for starting a workflow (property <code>dummy-adapter.at-least-once-delivery</code>). A
+ * {@link RecordingPhaseTwoListener} watches phase two and can make it fail. A
+ * {@link SampleExtension} stands for an extension which schedules an operation of its own.
  * <p>
- * It runs no BPMS. What these tests read is the row in gruelbox' table and what reached
- * the consumer of a call, never what an engine did with it.
+ * It runs no BPMS. These tests read the row in the gruelbox table and what reached the consumer of
+ * a call, never what an engine did with it.
  */
 @SpringBootApplication
 public class TestApplication {
 
   /**
-   * Built by Spring Boot while it starts this application.
+   * Spring Boot creates it while it starts this application.
    */
   public TestApplication() {
 
   }
 
   /**
-   * @return What observes phase two of the double, and fails it where a test asks for that
+   * @return What watches phase two of the double, and makes it fail if a test asks for that
    */
   @Bean
   public RecordingPhaseTwoListener recordingPhaseTwoListener() {
@@ -36,9 +35,9 @@ public class TestApplication {
   }
 
   /**
-   * Stands in for an extension contributing an operation of its own to the outbox.
+   * Stands for an extension which adds an operation of its own to the outbox.
    *
-   * @param registry VanillaBP's operation registry
+   * @param registry The operation registry of VanillaBP
    * @param aggregates Where the write of a dispatch goes
    * @return The sample extension
    */

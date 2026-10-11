@@ -23,15 +23,15 @@ import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 import io.vanillabp.outbox.gruelbox.GruelboxPhaseTwoOutboxAutoConfiguration;
 
 /**
- * This store writes the table <code>TXNO_OUTBOX</code>, and that is the one table a schema
- * handover does NOT get from <code>io.vanillabp:vanillabp-schema</code> - the schema belongs
- * to gruelbox. Switching VanillaBP's table creation off switches gruelbox's migrator off
- * with it, so the table's existence is verified at startup exactly like VanillaBP's own
- * tables. Without that check an application which forgot the table boots cleanly and fails
- * at the first workflow it starts.
+ * Holds that a missing <code>TXNO_OUTBOX</code> table stops the startup. This store writes that
+ * table, and it is the one table which a schema handover does NOT get from
+ * <code>io.vanillabp:vanillabp-schema</code>, because the schema belongs to gruelbox. Switching
+ * off the table creation of VanillaBP also switches off the migrator of gruelbox. So the table is
+ * checked at startup, exactly like the tables of VanillaBP. Without that check, an application
+ * which forgot the table starts cleanly and fails at the first workflow it starts.
  * <p>
- * <code>vanillabp.outbox.jdbc.table</code> is not part of that: it names VanillaBP's own
- * table, whose columns are not gruelbox' columns.
+ * <code>vanillabp.outbox.jdbc.table</code> is not part of that. It names the table of VanillaBP,
+ * whose columns are not the columns of gruelbox.
  */
 @ExtendWith(SuppressOutputExtension.class)
 public class GruelboxOutboxSchemaHandoverTest {
@@ -78,10 +78,10 @@ public class GruelboxOutboxSchemaHandoverTest {
 
           assertTrue(message.contains(GruelboxPhaseTwoOutboxAutoConfiguration.DEFAULT_OUTBOX_TABLE_NAME), message);
           assertTrue(message.contains(PhaseTwoOutboxProperties.CREATE_SCHEMA_PROPERTY), message);
-          // the statements are gruelbox's, so the message must not send anybody to
-          // VanillaBP's schema artifact for them
+          // the statements come from gruelbox, so the message must not send anybody to
+          // the schema artifact of VanillaBP for them
           assertTrue(message.contains("gruelbox"), message);
-          // the remedy has to name what actually produces those statements
+          // the fix has to name what really writes those statements
           assertTrue(message.contains("DefaultPersistor.writeSchema"), message);
 
         });
@@ -92,12 +92,12 @@ public class GruelboxOutboxSchemaHandoverTest {
   @DisplayName("The table gruelbox's own migrator creates satisfies the check")
   public void aTableCreatedByGruelboxPasses() {
 
-    // first boot creates the table the way an application which never handed the schema
-    // over gets it ...
+    // the first start creates the table, the way an application gets it which never
+    // handed the schema over ...
     applicationOn("schema-handover-created")
         .run(context -> assertNull(context.getStartupFailure(), "the migrating boot has to work"));
 
-    // ... and that is what the check accepts on the next boot of the same database
+    // ... and the check accepts it at the next start on the same database
     applicationOn("schema-handover-created", "vanillabp.outbox.create-schema=false")
         .run(context -> {
 

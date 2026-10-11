@@ -25,14 +25,14 @@ import io.vanillabp.outbox.gruelbox.GruelboxPhaseTwoOutboxAutoConfiguration;
 import io.vanillabp.spi.process.ProcessService;
 
 /**
- * The rule of every VanillaBP outbox, measured on a running application with this store: a
- * BPMS which keeps answering "not yet" uses no attempts, and the entry is blocked once
- * <code>vanillabp.outbox.wait-for-visibility-at-most</code> passed since it was written.
+ * Holds the rule of every VanillaBP outbox, on a running application with this store. A BPMS
+ * which keeps answering "not yet" uses no attempts. The entry is blocked once
+ * <code>vanillabp.outbox.wait-for-visibility-at-most</code> has passed since it was written.
  * <p>
- * The budget is two attempts and the wait is six seconds. A store which counted the answers
- * would block the entry at the second one and dispatch it no more, so the five answers this
- * test waits for are only reached by a store which does not count them. The application runs
- * on a database of its own, so nothing another test left behind is read here.
+ * The budget is two attempts, and the wait is six seconds. A store which counted the answers would
+ * block the entry at the second answer and dispatch it no more. So only a store which does not
+ * count them reaches the five answers this test waits for. The application runs on a database of
+ * its own, so nothing which another test left behind is read here.
  */
 @ExtendWith(SuppressOutputExtension.class)
 @SuppressOutputExtension.SuppressBackgroundOutput
@@ -47,14 +47,13 @@ public class WaitingForTheBpmsOnGruelboxEndsByTimeTest {
   static final int ATTEMPT_BUDGET = 2;
 
   /**
-   * More answers than the budget has attempts, so reaching them proves that none was
-   * counted.
+   * More answers than the budget has attempts. Reaching them shows that none was counted.
    */
   private static final int MORE_ANSWERS_THAN_THE_BUDGET = 5;
 
   /**
-   * How long an assertion waits for something the outbox does on its own thread. It is a
-   * deadline and not a pause, and it is longer than the six seconds the entry may wait.
+   * How long an assertion waits for something which the outbox does on its own thread. It is a
+   * deadline, not a pause, and it is longer than the six seconds the entry may wait.
    */
   private static final long PATIENCE = 30000L;
 
@@ -140,7 +139,7 @@ public class WaitingForTheBpmsOnGruelboxEndsByTimeTest {
     }
     final var whileWaiting = rowOf(key);
     assertFalse(whileWaiting.blocked(), "more answers than attempts, and the entry is blocked");
-    // a read may fall between gruelbox counting the attempt and the listener taking it back
+    // a read may happen after gruelbox counted the attempt and before the listener took it back
     assertTrue(whileWaiting.attempts() <= 1, "the answers were counted: "
         + whileWaiting.attempts());
 

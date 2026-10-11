@@ -15,15 +15,13 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Stands in for a real VanillaBP extension (e.g. the Business Cockpit) using the
- * outbox for its own crash-safe after-commit work: it registers an operation of its
- * own in the {@link PhaseOperationRegistry} and records the calls dispatched to
- * it.
+ * Stands for a real VanillaBP extension (e.g. the Business Cockpit) which uses the outbox for its
+ * own work after the commit, safe against crashes. It registers an operation of its own in the
+ * {@link PhaseOperationRegistry}, and it records the calls dispatched to it.
  * <p>
- * Everything an extension needs is used here: a namespaced operation name, an
- * idempotency key of its own making, arguments travelling with the call and a
- * dispatch which is NOT routed through the aggregate-to-adapter election of the
- * core operations.
+ * It uses everything an extension needs: an operation name with a namespace, an idempotency key
+ * of its own, arguments which travel with the call, and a dispatch which does NOT go through the
+ * election of an adapter for the aggregate, as the core operations do.
  */
 @RequiredArgsConstructor
 public class SampleExtension {
@@ -31,10 +29,9 @@ public class SampleExtension {
   public static final String OPERATION_NAME = "sample-extension:NOTIFY";
 
   /**
-   * What a dispatch writes into the workflow aggregate where a test asked it to. It stands
-   * for everything a handler of an extension writes while it reports: that write has to be
-   * committed with the dispatch which carried it, and rolled back with a dispatch which
-   * failed.
+   * What a dispatch writes into the workflow aggregate if a test asked for it. It stands for
+   * everything a handler of an extension writes while it reports. That write has to be committed
+   * with the dispatch which carried it, and rolled back with a dispatch which failed.
    */
   public static final String REPORTED_BY_THE_HANDLER = "reported-by-the-handler";
 
@@ -43,9 +40,9 @@ public class SampleExtension {
   private final PhaseOperationRegistry registry;
 
   /**
-   * Where the write of a dispatch goes. The handler of a real extension writes through
-   * VanillaBP, which runs it inside the dispatch; this double writes the same row in the
-   * same place, because what these tests read is the transaction the write rode in.
+   * Where the write of a dispatch goes. The handler of a real extension writes through VanillaBP,
+   * which runs it inside the dispatch. This double writes the same row in the same place, because
+   * these tests read the transaction the write was part of.
    */
   private final AggregateRepository aggregates;
 
@@ -60,7 +57,7 @@ public class SampleExtension {
   private volatile int failNextDispatchesPermanently;
 
   /**
-   * How many of the next dispatches are rejected the way an adapter rejects a workflow its
+   * How many of the next dispatches are rejected the way an adapter rejects a workflow which its
    * BPMS has not made searchable yet.
    */
   private volatile int rejectNextDispatches;
@@ -71,37 +68,36 @@ public class SampleExtension {
   private volatile Duration rejectionWindow = Duration.ofSeconds(1);
 
   /**
-   * Whether a dispatch which goes through writes into the workflow aggregate first, the way
-   * a provider notes down what it reported.
+   * Whether a dispatch which goes through first writes into the workflow aggregate, the way a
+   * provider notes down what it reported.
    */
   private volatile boolean writeWhileDispatching;
 
   /**
-   * Counts down when a held dispatch entered the handler, so a test knows the entry is
+   * Counts down when a held dispatch entered the handler, so a test knows that the entry is
    * claimed.
    */
   private volatile java.util.concurrent.CountDownLatch dispatchEntered;
 
   /**
-   * What a held dispatch waits for. A test which plans against an entry a dispatch has
-   * ALREADY taken needs that dispatch to stand still while it plans, and there is no
-   * other way to be sure the claim happened.
+   * What a held dispatch waits for. A test which plans against an entry which a dispatch has
+   * ALREADY taken needs that dispatch to stand still while it plans. There is no other way to be
+   * sure that the claim happened.
    */
   private volatile java.util.concurrent.CountDownLatch releaseDispatch;
 
   /**
    * Whether a dispatch is still to be held. Only the FIRST dispatch after
-   * {@link #holdNextDispatch()} waits, and this is what takes the hold away from the
-   * ones which follow.
+   * {@link #holdNextDispatch()} waits, and this flag releases the ones which follow.
    */
   private final java.util.concurrent.atomic.AtomicBoolean holdArmed = new java.util.concurrent.atomic.AtomicBoolean();
 
   private final java.util.concurrent.atomic.AtomicInteger attempts = new java.util.concurrent.atomic.AtomicInteger();
 
   /**
-   * The operation contributed by this extension: deduplicated per workflow
-   * aggregate AND event, so the same event is published at most once while
-   * different events of the same workflow are all published.
+   * The operation of this extension. It is deduplicated per workflow aggregate AND event. So the
+   * same event is published at most once, while different events of the same workflow are all
+   * published.
    */
   public static final PhaseOperation OPERATION = PhaseOperation
       .extensionOperation(OPERATION_NAME)
@@ -150,12 +146,12 @@ public class SampleExtension {
   }
 
   /**
-   * Builds a call of this extension's operation - what the extension would
-   * schedule inside the business transaction.
+   * Builds a call of the operation of this extension. The extension would schedule it inside the
+   * business transaction.
    *
    * @param workflowModuleId The workflow module ID
    * @param bpmnProcessId The BPMN process ID
-   * @param workflowAggregateId The aggregate's ID in serialized form
+   * @param workflowAggregateId The ID of the aggregate in serialized form
    * @param event The event to be published
    * @return The call to be scheduled
    */
@@ -170,12 +166,12 @@ public class SampleExtension {
   }
 
   /**
-   * Builds a call of this extension's operation which carries the state the extension
-   * saw when it planned the call - what a sync to the Business Cockpit passes.
+   * Builds a call of the operation of this extension which carries the state the extension saw
+   * when it planned the call. A sync to the Business Cockpit passes such a state.
    *
    * @param workflowModuleId The workflow module ID
    * @param bpmnProcessId The BPMN process ID
-   * @param workflowAggregateId The aggregate's ID in serialized form
+   * @param workflowAggregateId The ID of the aggregate in serialized form
    * @param event The event to be published
    * @param payload The bytes to carry, or <code>null</code>
    * @return The call to be scheduled
@@ -196,11 +192,11 @@ public class SampleExtension {
   }
 
   /**
-   * Writes into the workflow aggregate the way a handler of an extension does while it
-   * reports. It runs inside the dispatch, so the row it writes is committed with the entry
-   * being ticked off and gone where the dispatch failed.
+   * Writes into the workflow aggregate the way a handler of an extension does while it reports. It
+   * runs inside the dispatch. So the row it writes is committed when the entry is ticked off, and
+   * it is gone if the dispatch failed.
    *
-   * @param workflowAggregateId The aggregate's ID in serialized form
+   * @param workflowAggregateId The ID of the aggregate in serialized form
    */
   private void writeIntoTheAggregate(
       final String workflowAggregateId) {
@@ -215,8 +211,8 @@ public class SampleExtension {
   }
 
   /**
-   * How often the dispatch of this extension's operation was entered, the attempts which
-   * threw included - what tells a failed attempt apart from one which never happened.
+   * How often the dispatch of the operation of this extension was entered, including the attempts
+   * which threw. It tells a failed attempt from one which never happened.
    *
    * @return The number of attempts since the last reset
    */
@@ -245,9 +241,8 @@ public class SampleExtension {
   }
 
   /**
-   * Makes the next dispatch stop inside the handler until
-   * {@link #releaseHeldDispatch()} lets it go. The entry is claimed by then, which is
-   * the state a test about a claimed entry needs.
+   * Makes the next dispatch stop inside the handler until {@link #releaseHeldDispatch()} lets it
+   * go. The entry is claimed by then, and a test about a claimed entry needs that state.
    */
   public void holdNextDispatch() {
 
@@ -286,7 +281,7 @@ public class SampleExtension {
   }
 
   /**
-   * Stops the dispatch which entered first, where a test asked for it.
+   * Stops the dispatch which entered first, if a test asked for it.
    */
   private void holdWhereATestAskedForIt() {
 
@@ -311,9 +306,9 @@ public class SampleExtension {
   }
 
   /**
-   * Lets the next dispatches fail with {@link PhaseTwoPermanentFailure}, which is what an
-   * extension throws where waiting longer cannot help, for instance a workflow which
-   * still has no user task after ten minutes.
+   * Makes the next dispatches fail with {@link PhaseTwoPermanentFailure}. An extension throws it
+   * when waiting longer cannot help, for example for a workflow which still has no user task after
+   * ten minutes.
    *
    * @param count The number of dispatches to fail that way
    */
@@ -325,8 +320,8 @@ public class SampleExtension {
   }
 
   /**
-   * Lets the next dispatches be rejected with the window an adapter names while its BPMS has
-   * not made the workflow searchable yet - the ordinary case on Camunda 8.
+   * Makes the next dispatches be rejected with the window an adapter names while its BPMS has not
+   * made the workflow searchable yet. That is the normal case on Camunda 8.
    *
    * @param count The number of dispatches to reject that way
    * @param window The window the rejection names
@@ -341,8 +336,8 @@ public class SampleExtension {
   }
 
   /**
-   * Lets a dispatch which goes through write into the workflow aggregate before it records
-   * the call, the way a provider notes down what it reported.
+   * Makes a dispatch which goes through write into the workflow aggregate before it records the
+   * call, the way a provider notes down what it reported.
    */
   public void writeWhileDispatching() {
 
