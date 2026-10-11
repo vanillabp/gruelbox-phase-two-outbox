@@ -30,22 +30,21 @@ import io.vanillabp.integration.spi.PhaseTwoPayloadStore;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 
 /**
- * The three numbers this store reads out of gruelbox' table: how many entries still wait for
- * a dispatch, when the next thing is due, and how many dispatched entries a flush still owes
- * a delete.
+ * Holds the three numbers this store reads from the gruelbox table: how many entries still wait
+ * for a dispatch, when the next thing is due, and how many dispatched entries a flush still has to
+ * delete.
  * <p>
- * Two promises hold them together. A BLOCKED entry is no moment to wake up for and nothing a
- * flush owes a delete, because it waits for a person rather than for a clock; the backlog is
- * the one number which does carry it, since gruelbox leaves such an entry unprocessed, and the
- * gauge <code>vanillabp.outbox.blocked</code> stands beside it for exactly that reason. And
- * none of the three may cost the application anything when the table cannot be read - a meter
- * reports a gap instead of a number, and the poller falls back to its cap - which is why the
- * last test of each group asks a store whose table is not there.
+ * Two promises hold them together. A BLOCKED entry is no moment to wake up for, and no flush has
+ * to delete it, because it waits for a person and not for a clock. The backlog is the one number
+ * which does count it, because gruelbox leaves such an entry unprocessed. That is why the gauge
+ * <code>vanillabp.outbox.blocked</code> stands next to it. And none of the three may cost the
+ * application anything when the table cannot be read. A meter then reports a gap instead of a
+ * number, and the poller falls back to its cap. That is why the last test of each group asks a
+ * store whose table is not there.
  * <p>
- * The rows are written with gruelbox' own persistor and then moved into the state under test
- * with plain SQL, so what an assertion reads is what this test wrote. Nothing is scheduled
- * here: a schedule hands the entry to a dispatcher thread, and the numbers would then be
- * racing it.
+ * The rows are written with the persistor of gruelbox, and then plain SQL moves them into the
+ * state under test. So an assertion reads what this test wrote. Nothing is scheduled here. A
+ * schedule hands the entry to a dispatcher thread, and the numbers would then race it.
  */
 @ExtendWith(SuppressOutputExtension.class)
 public class TheNumbersThisStoreReportsTest {
@@ -53,9 +52,9 @@ public class TheNumbersThisStoreReportsTest {
   private static final String TABLE = GruelboxPhaseTwoOutboxAutoConfiguration.DEFAULT_OUTBOX_TABLE_NAME;
 
   /**
-   * A table of a name no database of this test has. Asking it is how the answer of a store
-   * which cannot read its table is measured, and it is the shape a real application meets
-   * when somebody drops the table under a running node.
+   * A table name which no database of this test has. Asking it shows the answer of a store which
+   * cannot read its table. A real application meets this when somebody drops the table under a
+   * running node.
    */
   private static final String NO_SUCH_TABLE = "A_TABLE_WHICH_IS_NOT_THERE";
 
@@ -91,11 +90,11 @@ public class TheNumbersThisStoreReportsTest {
   }
 
   /**
-   * A store over gruelbox' table of this test. It is built without a transaction outbox and
-   * with a payload store nobody calls, because none of the three numbers schedules anything:
-   * each of them is a read of the table the store was built with.
+   * A store on the gruelbox table of this test. It is built without a transaction outbox, and with
+   * a payload store which nobody calls. None of the three numbers schedules anything. Each of them
+   * reads the table the store was built with.
    *
-   * @param tableName The table to read, which one test deliberately gets wrong
+   * @param tableName The table to read. One test gets it wrong on purpose
    * @return The store
    */
   private GruelboxPhaseTwoOutbox storeReading(
@@ -107,8 +106,8 @@ public class TheNumbersThisStoreReportsTest {
   }
 
   /**
-   * An entry as gruelbox writes it when a call is scheduled: waiting, never attempted, due
-   * at the moment given.
+   * An entry as gruelbox writes it when a call is scheduled: waiting, never attempted, and due at
+   * the given moment.
    *
    * @param dueAt When gruelbox would pick it up
    * @return The entry, already in the table
@@ -135,8 +134,8 @@ public class TheNumbersThisStoreReportsTest {
   }
 
   /**
-   * Marks an entry the way gruelbox marks one it dispatched: processed, with the moment its
-   * retention runs out in the column it keeps both moments in.
+   * Marks an entry the way gruelbox marks one it dispatched: processed, and with the moment its
+   * retention runs out, in the column which holds both moments.
    *
    * @param entry The entry to mark
    * @param retentionRunsOutAt When a flush may delete it
@@ -153,7 +152,7 @@ public class TheNumbersThisStoreReportsTest {
   }
 
   /**
-   * Marks an entry the way this store's failure listener marks one nobody is going to retry.
+   * Marks an entry the way the failure listener of this store marks one which nobody will retry.
    *
    * @param entry The entry to block
    */
@@ -193,8 +192,8 @@ public class TheNumbersThisStoreReportsTest {
     dispatched(alsoWaiting, Instant.now().plus(Duration.ofDays(7)));
     assertEquals(1, store.pendingCalls().orElseThrow(), "a dispatched entry is not a backlog");
 
-    // a blocked entry, on the other hand, IS in this number: gruelbox leaves it
-    // unprocessed, and an operation nobody carried out is still owed to the workflow
+    // a blocked entry, on the other hand, IS in this number. Gruelbox leaves it
+    // unprocessed, and the workflow is still owed an operation which nobody carried out
     final var givenUpOn = anEntryWaitingUntil(Instant.now());
     blocked(givenUpOn);
     assertEquals(
@@ -225,7 +224,7 @@ public class TheNumbersThisStoreReportsTest {
     anEntryWaitingUntil(inTenMinutes);
     assertEquals(inTenMinutes, store.earliestDueAt(), "the waiting entry alone");
 
-    // a dispatched entry whose retention runs out sooner: the flush has something to do
+    // a dispatched entry whose retention runs out sooner. The flush has something to do
     // before the attempt is due, and that is the moment to wake up for
     final var inOneMinute = Instant.now().plus(Duration.ofMinutes(1)).truncatedTo(ChronoUnit.MILLIS);
     dispatched(anEntryWaitingUntil(Instant.now()), inOneMinute);
@@ -284,12 +283,12 @@ public class TheNumbersThisStoreReportsTest {
     dispatched(anEntryWaitingUntil(Instant.now()), Instant.now().plus(Duration.ofDays(7)));
     assertEquals(1, store.countDispatchedEntriesPastTheirRetention().orElseThrow());
 
-    // waiting for its dispatch: nothing a flush deletes
+    // waiting for its dispatch: no flush deletes it
     anEntryWaitingUntil(Instant.now());
     assertEquals(1, store.countDispatchedEntriesPastTheirRetention().orElseThrow());
 
-    // blocked and long past the moment in its column: gruelbox deletes no blocked entry,
-    // so counting it would promise a number which never falls
+    // blocked, and long past the moment in its column. Gruelbox deletes no blocked
+    // entry, so counting it would promise a number which never falls
     final var givenUpOn = anEntryWaitingUntil(Instant.now().minus(Duration.ofDays(30)));
     blocked(givenUpOn);
     assertEquals(1, store.countDispatchedEntriesPastTheirRetention().orElseThrow());

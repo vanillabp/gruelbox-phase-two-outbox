@@ -40,16 +40,17 @@ import io.vanillabp.integration.spi.PhaseTwoRetryLater;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 
 /**
- * A BPMS which does not report a workflow yet is no failure of the entry, so its answer "not
- * yet" must not use up the attempts of <code>vanillabp.outbox.block-after-attempts</code>.
- * What ends such a wait is <code>vanillabp.outbox.wait-for-visibility-at-most</code>, counted
- * from the moment the entry was written. This test reads the row back to prove both halves on
- * this store, where gruelbox counts the attempt before the listener is called.
+ * Holds that waiting for a BPMS uses time, not attempts. A BPMS which does not report a workflow
+ * yet is no failure of the entry. So its answer "not yet" must not use up the attempts of
+ * <code>vanillabp.outbox.block-after-attempts</code>. Such a wait is ended by
+ * <code>vanillabp.outbox.wait-for-visibility-at-most</code>, counted from the moment the entry
+ * was written. This test reads the row back to show both halves on this store, where gruelbox
+ * counts the attempt before the listener is called.
  * <p>
- * Each entry is saved the way gruelbox holds it right after it committed a failed attempt,
- * and then handed to the listener. Nothing dispatches here, so the row an assertion reads is
- * the row this test wrote. How old an entry is, is set through the moment in its session,
- * so no test waits for time to pass.
+ * Each entry is saved the way gruelbox holds it right after it committed a failed attempt, and
+ * then handed to the listener. Nothing dispatches here, so an assertion reads the row this test
+ * wrote. The moment in the session of an entry sets how old it is. So no test waits for time to
+ * pass.
  */
 @ExtendWith(SuppressOutputExtension.class)
 public class WaitingForTheBpmsUsesTimeNotAttemptsTest {
@@ -65,8 +66,8 @@ public class WaitingForTheBpmsUsesTimeNotAttemptsTest {
   private static final Duration ATTEMPT_FREQUENCY = Duration.ofSeconds(30);
 
   /**
-   * The words of the ERROR which reports an entry that waited too long. The key is what
-   * an operator needs to read there.
+   * The words of the ERROR which reports an entry that waited too long. An operator needs to read
+   * the key there.
    */
   private static final String WAITED_TOO_LONG = "which is longer than '"
       + PhaseTwoOutboxProperties.WAIT_FOR_VISIBILITY_AT_MOST_PROPERTY
@@ -162,7 +163,7 @@ public class WaitingForTheBpmsUsesTimeNotAttemptsTest {
                     PhaseOperation.CORRELATE_MESSAGE.name(), "taxiride", "Ride", "4711", "camunda8", null
                 }, null, session))
         .attempts(attempts)
-        // gruelbox blocks an entry once the attempt it just counted was the last of the budget
+        // gruelbox blocks an entry once the attempt it just counted was the last one of the budget
         .blocked(attempts >= ATTEMPT_BUDGET)
         .lastAttemptTime(Instant.now().truncatedTo(ChronoUnit.MILLIS))
         .nextAttemptTime(Instant.now().plus(ATTEMPT_FREQUENCY).truncatedTo(ChronoUnit.MILLIS))
@@ -234,8 +235,8 @@ public class WaitingForTheBpmsUsesTimeNotAttemptsTest {
   }
 
   /**
-   * More answers than the budget has attempts block nothing as long as the wait is not over.
-   * Every answer arrives with the attempt gruelbox just counted on top of what the row held.
+   * More answers than the budget has attempts block nothing, as long as the wait is not over.
+   * Every answer arrives with the attempt gruelbox just counted, on top of what the row held.
    */
   @Test
   @DisplayName("More answers 'not yet' than the budget has attempts do not block the entry")
@@ -246,7 +247,7 @@ public class WaitingForTheBpmsUsesTimeNotAttemptsTest {
 
     for (var answer = 0; answer < ATTEMPT_BUDGET * 2; answer++) {
       listener.failure(entry, new PhaseTwoRetryLater("not searchable yet", WINDOW));
-      // what gruelbox does at the next failed attempt: count it and push the row back
+      // what gruelbox does at the next failed attempt: count it, and move the row back
       entry.setAttempts(entry.getAttempts() + 1);
       entry.setBlocked(entry.getAttempts() >= ATTEMPT_BUDGET);
       entry.setNextAttemptTime(Instant.now().plus(ATTEMPT_FREQUENCY).truncatedTo(ChronoUnit.MILLIS));
@@ -261,9 +262,9 @@ public class WaitingForTheBpmsUsesTimeNotAttemptsTest {
   }
 
   /**
-   * An entry which used up all attempts but one with real failures is blocked by gruelbox
-   * at its next failure. Where that failure is the answer "not yet", the answer is looked at
-   * first, so the entry stays open, as it does on the other stores.
+   * Real failures used up all attempts of an entry but one. Gruelbox blocks it at its next
+   * failure. If that failure is the answer "not yet", the answer is looked at first. So the entry
+   * stays open, as it does on the other stores.
    */
   @Test
   @DisplayName("An entry gruelbox blocked at the answer 'not yet' is opened again")
@@ -302,7 +303,7 @@ public class WaitingForTheBpmsUsesTimeNotAttemptsTest {
   }
 
   /**
-   * Where gruelbox used up the budget at the same answer at which the wait ends, the row is
+   * Gruelbox may use up the budget at the same answer at which the wait ends. Then the row is
    * blocked already. The listener reports it once, as an entry which waited too long.
    */
   @Test
@@ -322,9 +323,9 @@ public class WaitingForTheBpmsUsesTimeNotAttemptsTest {
   }
 
   /**
-   * An entry written before this store kept the moment, or by an outbox built without the
-   * listener, cannot be ended by time. It keeps the old rule, so the attempt budget still
-   * ends a wait which never ends.
+   * Time cannot end an entry which was written before this store kept the moment, or by an
+   * outbox built without the listener. It keeps the old rule. So the attempt budget still ends a
+   * wait which would never end.
    */
   @Test
   @DisplayName("An entry which does not know when it was written counts the answer as an attempt")

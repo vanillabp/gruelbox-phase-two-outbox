@@ -30,16 +30,15 @@ import io.vanillabp.integration.spi.PhaseTwoRetryLater;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 
 /**
- * Gruelbox knows one distance for the whole outbox, and a dispatch which was rejected
- * because the BPMS has not made the workflow searchable yet names a window of its own. This
- * test reads the row back to prove that the window is what the table holds, whether it is
- * the closer of the two or the farther one, and that the store's own backoff stays where a
- * dispatch says nothing about a moment.
+ * Holds that the table keeps the window a rejected dispatch names. Gruelbox knows one distance
+ * for the whole outbox. A dispatch which was rejected, because the BPMS has not made the workflow
+ * searchable yet, names a window of its own. This test reads the row back. It shows that the table
+ * holds the window, whether it is shorter or longer. And it shows that the backoff of the store
+ * stays if a dispatch says nothing about a moment.
  * <p>
- * The entry is saved and handed to the listener directly rather than scheduled, so the row
- * an assertion reads is the row this test wrote and nothing races a dispatcher thread. The
- * next attempt time it starts from is the one gruelbox writes before it calls a listener:
- * now plus <code>attempt-frequency</code>.
+ * The entry is saved and handed to the listener directly, not scheduled. So an assertion reads the
+ * row this test wrote, and no dispatcher thread races it. The next attempt time it starts from is
+ * the one gruelbox writes before it calls a listener: now plus <code>attempt-frequency</code>.
  */
 @ExtendWith(SuppressOutputExtension.class)
 public class GruelboxWritesTheDueTimeADispatchAskedForTest {
@@ -91,8 +90,8 @@ public class GruelboxWritesTheDueTimeADispatchAskedForTest {
   }
 
   /**
-   * An entry as gruelbox holds it right after it committed a failed attempt: the attempt is
-   * counted and the next one is due after the store's own distance.
+   * An entry as gruelbox holds it right after it committed a failed attempt. The attempt is
+   * counted, and the next one is due after the distance of the store.
    */
   private TransactionOutboxEntry anEntryWhoseAttemptFailed() throws Exception {
 
@@ -136,7 +135,7 @@ public class GruelboxWritesTheDueTimeADispatchAskedForTest {
 
     final var entry = anEntryWhoseAttemptFailed();
 
-    // truncated like the due time the listener writes, which is a moment in milliseconds
+    // truncated like the due time the listener writes, which is in milliseconds
     final var beforeTheWrite = Instant.now().truncatedTo(ChronoUnit.MILLIS);
     listener().failure(entry, new PhaseTwoRetryLater("not searchable yet", WINDOW));
 
@@ -154,9 +153,9 @@ public class GruelboxWritesTheDueTimeADispatchAskedForTest {
   }
 
   /**
-   * A window is what the adapter knows about its BPMS, so it replaces the distance of the
-   * store even where it is the farther of the two. The stores VanillaBP writes itself do it
-   * that way, and an adapter's window means the same thing on all of them.
+   * A window is what the adapter knows about its BPMS. So it replaces the distance of the store,
+   * even if it is the longer one. The stores VanillaBP writes itself do the same, and the window of
+   * an adapter means the same thing on all of them.
    */
   @Test
   @DisplayName("A window longer than the store's own distance is written as well")

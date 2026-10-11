@@ -14,24 +14,23 @@ import org.springframework.context.annotation.Configuration;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 
 /**
- * <code>vanillabp.outbox.gruelbox.enabled</code> is this artifact's key, so this artifact is
- * where it is bound and where a value which is no boolean is answered.
+ * Holds that <code>vanillabp.outbox.gruelbox.enabled</code> is bound by this artifact. It is the
+ * key of this artifact. So this artifact binds it, and it answers a value which is no boolean.
  * <p>
- * The condition of {@link GruelboxPhaseTwoOutboxAutoConfiguration} reads the environment and
- * needs no bean for it, which is how such a key can live without anybody binding it: an
- * application writing <code>enabled: sometimes</code> would then switch nothing on and be told
- * nothing. Binding it puts that value in front of Spring's converter instead, and the startup
- * ends naming the key.
+ * The condition of {@link GruelboxPhaseTwoOutboxAutoConfiguration} reads the environment and needs
+ * no bean for it. So such a key could exist without anybody binding it. An application which
+ * writes <code>enabled: sometimes</code> would then switch nothing on, and nobody would tell it.
+ * Binding the key hands that value to the converter of Spring instead, and the startup stops with a
+ * message which names the key.
  * <p>
- * The default is the other half. The dependency is what asks for this store, so an application
- * which has this artifact and writes nothing about it runs this store, and the bound value says
- * the same.
+ * The default is the other half. The dependency asks for this store. So an application which has
+ * this artifact and writes nothing about it runs this store, and the bound value says the same.
  */
 @ExtendWith(SuppressOutputExtension.class)
 public class TheKeyOfThisStoreIsBoundHereTest {
 
   /**
-   * Binds the section and nothing else. The auto-configuration binds it too, and it would also
+   * Binds the section and nothing else. The auto-configuration binds it too. But it would also
    * build the store, which needs a database and says nothing about the key.
    */
   @Configuration

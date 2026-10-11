@@ -32,12 +32,11 @@ import io.vanillabp.integration.config.VanillaBpConfigurationProperties;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 
 /**
- * The two decisions the gruelbox-based default outbox makes while it is wired, both of
- * them invisible until they are wrong: which SQL dialect gruelbox writes with, and which
- * transaction manager its entries are enlisted in. A wrong dialect produces SQL the
- * database rejects at the first workflow started on a remote BPMS, and a wrong
- * transaction manager commits the entry separately from the aggregate - the very split
- * the outbox exists to prevent.
+ * Holds the two decisions which the default outbox on gruelbox makes while it is wired. Both are
+ * invisible until they are wrong: which SQL dialect gruelbox writes, and which transaction manager
+ * its entries are enlisted in. A wrong dialect makes SQL which the database rejects at the first
+ * workflow started on a remote BPMS. A wrong transaction manager commits the entry apart from the
+ * aggregate. That split is exactly what the outbox exists to prevent.
  */
 @ExtendWith(SuppressOutputExtension.class)
 public class GruelboxOutboxWiringTest {
@@ -59,9 +58,8 @@ public class GruelboxOutboxWiringTest {
   @DisplayName("The dialect is read from the product name the driver reports")
   public void theDialectIsReadFromTheProductName() throws Exception {
 
-    // gruelbox writes its statements in the dialect chosen here - a wrong one is
-    // syntactically valid Java and invalid SQL, and shows at the first workflow
-    // started on a remote BPMS
+    // gruelbox writes its statements in the dialect chosen here. A wrong one is valid
+    // Java and invalid SQL, and it shows at the first workflow started on a remote BPMS
     assertEquals(Dialect.H2, GruelboxPhaseTwoOutboxAutoConfiguration.detectDialect(reporting("H2")));
     assertEquals(
         Dialect.POSTGRESQL_9,
@@ -111,7 +109,7 @@ public class GruelboxOutboxWiringTest {
     final var jpa = Mockito.mock(PlatformTransactionManager.class);
     final var mongo = Mockito.mock(PlatformTransactionManager.class);
     final var managers = new LinkedHashMap<String, PlatformTransactionManager>();
-    // the Mongo one first: picking "the first" would be wrong, and the outbox table
+    // the Mongo one first: picking "the first" would be wrong, because the outbox table
     // lives in the JDBC data source
     managers.put("mongoTransactionManager", mongo);
     managers.put("transactionManager", jpa);
@@ -145,8 +143,8 @@ public class GruelboxOutboxWiringTest {
 
   private static SingleConnectionDataSource h2() {
 
-    // one connection kept open: the in-memory database lives as long as it does, which
-    // is what makes "the table gruelbox created is there" assertable
+    // one connection kept open: the in-memory database lives as long as it does. That is
+    // what lets the test check that the table gruelbox created is there
     final var dataSource = new SingleConnectionDataSource(
         "jdbc:h2:mem:%s;DB_CLOSE_DELAY=-1".formatted(UUID.randomUUID()), "sa", "", true);
     dataSource.setDriverClassName("org.h2.Driver");
@@ -194,8 +192,8 @@ public class GruelboxOutboxWiringTest {
   @DisplayName("An application managing the schema itself is stopped at startup when the table is missing")
   public void aMissingTableStopsTheStartupInsteadOfTheFirstWorkflow() {
 
-    // Without the check the missing table surfaces at the first workflow
-    // started on a remote BPMS, hours after a deployment which booted cleanly
+    // without the check, the missing table shows up at the first workflow started
+    // on a remote BPMS, hours after a deployment which started cleanly
     final var properties = new VanillaBpConfigurationProperties();
     properties.getOutbox().setCreateSchema(false);
     final var dataSource = h2();
@@ -206,8 +204,8 @@ public class GruelboxOutboxWiringTest {
     assertTrue(
         message.contains(GruelboxPhaseTwoOutboxAutoConfiguration.DEFAULT_OUTBOX_TABLE_NAME),
         message);
-    // the table belongs to gruelbox, not to io.vanillabp:vanillabp-schema - the
-    // message has to point where the statements actually come from
+    // the table belongs to gruelbox, not to io.vanillabp:vanillabp-schema. The message
+    // has to point to where the statements really come from
     assertTrue(message.contains("gruelbox"), message);
 
   }
@@ -216,8 +214,8 @@ public class GruelboxOutboxWiringTest {
   @DisplayName("The table of VanillaBP's own outbox does not rename gruelbox' table")
   public void theNameOfVanillaBpsOwnTableLeavesGruelboxAlone() throws Exception {
 
-    // the two tables hold different columns, so one name for both would create the
-    // wrong schema for whichever store the application ends up running
+    // the two tables have different columns. One name for both would create the wrong
+    // schema for whichever store the application ends up running
     final var properties = new VanillaBpConfigurationProperties();
     properties.getOutbox().getJdbc().setTable("MY_OWN_OUTBOX");
     final var dataSource = h2();

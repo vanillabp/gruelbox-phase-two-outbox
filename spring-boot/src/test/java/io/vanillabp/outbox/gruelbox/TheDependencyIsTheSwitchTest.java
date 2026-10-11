@@ -20,25 +20,24 @@ import io.vanillabp.integration.spi.PhaseTwoOutbox;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 
 /**
- * Which of the two stores serves a relational workflow aggregate, and what decides it.
+ * Holds which of the two stores serves a relational workflow aggregate, and what decides it.
  * <p>
- * The rule has two halves and this class holds both. The dependency is what asks for this
- * store: an application which has this artifact and writes nothing gets it. The key is what
- * takes the question back: <code>vanillabp.outbox.gruelbox.enabled=false</code> hands the
- * entries to the store VanillaBP writes itself, and that half is the one worth a test of its
- * own, because switching this store off and getting NO store at all would be the same silence
- * as getting the wrong one.
+ * The rule has two halves, and this class holds both. The dependency asks for this store: an
+ * application which has this artifact and writes nothing gets it. The key takes that back:
+ * <code>vanillabp.outbox.gruelbox.enabled=false</code> hands the entries to the store VanillaBP
+ * writes itself. That half is worth a test of its own. Switching this store off and getting NO
+ * store at all would be just as silent as getting the wrong one.
  * <p>
- * Both stores go by one bean name, which is why the assertions read the TYPE behind that name
- * and count the stores in the context. Two beans would mean the two configurations no longer
- * exclude each other, and one of the wrong type would mean the wrong store is serving.
+ * Both stores use one bean name. So the assertions read the TYPE behind that name, and they count
+ * the stores in the context. Two beans would mean that the two configurations no longer exclude
+ * each other. One bean of the wrong type would mean that the wrong store serves.
  */
 @ExtendWith(SuppressOutputExtension.class)
 public class TheDependencyIsTheSwitchTest {
 
   /**
-   * An application with a relational database, both outbox configurations on the classpath and
-   * nothing else. The database is per test, because each one creates the tables of the store
+   * An application with a relational database, both outbox configurations on the classpath, and
+   * nothing else. Each test has its own database, because each one creates the tables of the store
    * it gets.
    *
    * @param database The name of the in-memory database

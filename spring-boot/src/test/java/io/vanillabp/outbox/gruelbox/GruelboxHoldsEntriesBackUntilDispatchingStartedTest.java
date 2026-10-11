@@ -33,17 +33,17 @@ import io.vanillabp.integration.spi.PhaseTwoCall;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 
 /**
- * Spring Boot opens its web server before VanillaBP deployed its models, so an
- * application answers a request while its BPMS does not hold the process yet. Gruelbox
- * would carry such a start to the BPMS right after the commit, and the answer that
- * there is no such process is a failure no repetition can fix: the entry is blocked
- * although the next attempt would have worked. The submitter therefore keeps the entry
+ * Holds that the submitter keeps an entry until VanillaBP dispatches. Spring Boot opens its web
+ * server before VanillaBP deployed its models. So an application answers a request while its BPMS
+ * does not hold the process yet. Gruelbox would carry such a start to the BPMS right after the
+ * commit. The answer that there is no such process is a failure which no repetition can fix: the
+ * entry is blocked, although the next attempt would have worked. So the submitter keeps the entry
  * until VanillaBP dispatches, and the first poll carries it.
  * <p>
- * The poll interval of these tests is an hour, so the poller flushes once when it
- * starts and never again while a test runs. Where a test needs the gate open and the
- * poller idle, it waits for the entry of that first flush before it schedules the one
- * it asks about - a dispatch arriving after that can only have come from the submitter.
+ * The poll interval of these tests is an hour. So the poller flushes once when it starts, and never
+ * again while a test runs. A test which needs the gate open and the poller idle waits for the
+ * entry of that first flush. Only then does it schedule the entry it asks about. A dispatch which
+ * arrives after that can only come from the submitter.
  */
 @ExtendWith(SuppressOutputExtension.class)
 @SuppressOutputExtension.SuppressBackgroundOutput
@@ -67,9 +67,9 @@ public class GruelboxHoldsEntriesBackUntilDispatchingStartedTest {
   private GruelboxPhaseTwoOutbox testee;
 
   /**
-   * Where a payload would go. No call of this test carries one, and the store and the
-   * dispatcher are built with it anyway: the place a payload goes belongs to both of them
-   * the way gruelbox' table does.
+   * Where a payload would go. No call of this test carries one, but the store and the dispatcher
+   * are built with it anyway. The place for payloads belongs to both of them, like the table of
+   * gruelbox.
    */
   private JdbcPhaseTwoPayloadStore payloadStore;
 
@@ -88,8 +88,8 @@ public class GruelboxHoldsEntriesBackUntilDispatchingStartedTest {
     dataSource.setDriverClassName("org.h2.Driver");
     dispatches = new LinkedBlockingQueue<>();
     context = new AnnotationConfigApplicationContext();
-    // gruelbox resolves the invocation through the context, on the thread dispatching
-    // it - which workflow was dispatched is all these tests read
+    // gruelbox finds the invocation through the context, on the thread which dispatches
+    // it. These tests only read which workflow was dispatched
     context
         .registerBean(
             GruelboxPhaseTwoDispatch.class,
@@ -152,8 +152,8 @@ public class GruelboxHoldsEntriesBackUntilDispatchingStartedTest {
   }
 
   /**
-   * The dispatcher of this outbox. Building it closes the submitter's gate, so a test
-   * which wants an entry to wait builds it before it schedules.
+   * The dispatcher of this outbox. Building it closes the gate of the submitter. So a test which
+   * wants an entry to wait builds it before it schedules.
    */
   private GruelboxPhaseTwoOutboxDispatcher aDispatcher() {
 
@@ -232,8 +232,8 @@ public class GruelboxHoldsEntriesBackUntilDispatchingStartedTest {
     final var itsDispatcher = aDispatcher();
     start("4713");
     itsDispatcher.startPolling();
-    // the entry of the first poll: once it is out, that poll is over and the next one
-    // is an hour away, so whatever is dispatched from here on came from the submitter
+    // the entry of the first poll. Once it is out, that poll is over, and the next one
+    // is an hour away. So whatever is dispatched from here on came from the submitter
     assertEquals("4713", dispatchedWithin(Duration.ofSeconds(10)));
 
     start("4714");
@@ -246,8 +246,8 @@ public class GruelboxHoldsEntriesBackUntilDispatchingStartedTest {
   @DisplayName("An outbox nobody polls dispatches after the commit, as it did before the gate existed")
   public void anOutboxWithoutADispatcherKeepsDispatching() throws Exception {
 
-    // no dispatcher is built here: a test or an application polling the outbox itself
-    // would otherwise wait for something which never comes
+    // no dispatcher is built here. Otherwise a test, or an application which polls the
+    // outbox itself, would wait for something which never comes
     start("4715");
 
     assertEquals("4715", dispatchedWithin(Duration.ofSeconds(10)), "an outbox without a dispatcher lost its dispatch");

@@ -83,8 +83,8 @@ public class AWriteWhichFailsLeavesTheEntryAsGruelboxWroteItTest {
   }
 
   /**
-   * The listener over a persistor which cannot write. Nothing migrates gruelbox' table here:
-   * the persistor never reaches a database, because it refuses the update itself.
+   * The listener on a persistor which cannot write. Nothing creates the gruelbox table here. The
+   * persistor never reaches a database, because it refuses the update itself.
    *
    * @return The listener under test
    */
@@ -101,8 +101,8 @@ public class AWriteWhichFailsLeavesTheEntryAsGruelboxWroteItTest {
   }
 
   /**
-   * An entry as gruelbox holds it right after it committed a failed attempt: the attempt is
-   * counted and the next one is due after the store's own distance.
+   * An entry as gruelbox holds it right after it committed a failed attempt. The attempt is
+   * counted, and the next one is due after the distance of the store.
    *
    * @return The entry
    */
