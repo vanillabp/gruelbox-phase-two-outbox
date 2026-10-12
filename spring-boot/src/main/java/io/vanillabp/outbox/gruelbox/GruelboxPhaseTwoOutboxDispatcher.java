@@ -21,59 +21,54 @@ import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Background processing of the gruelbox transaction outbox: right after a commit
- * gruelbox dispatches the scheduled call itself, but for crash recovery and retries a
- * poller calling {@link TransactionOutbox#flush()} is required. Flushing
- * also deletes successfully dispatched entries whose retention threshold passed (the
- * asynchronous cleanup of the "DONE instead of delete" contract). The poller is
- * started on {@link ApplicationReadyEvent} (the first run also dispatches entries
- * left over from a previous crashed instance).
+ * Processes the gruelbox transaction outbox in the background. Right after a commit, gruelbox
+ * dispatches the scheduled call itself. But recovery after a crash and retries need a poller which
+ * calls {@link TransactionOutbox#flush()}. A flush also deletes dispatched entries whose retention
+ * has passed. That is the cleanup, later and in the background, which the contract "DONE instead
+ * of delete" asks for. The poller starts on {@link ApplicationReadyEvent}. Its first run also
+ * dispatches entries left over from an instance which crashed before.
  * <p>
- * It does not flush on a rhythm. A flush is three database commands whether or not
- * anything is waiting, so between two of them the poller sleeps until the moment
- * gruelbox' own table says the next entry wants something
- * ({@link GruelboxPhaseTwoOutbox#earliestDueAt()}), bounded by
- * <code>vanillabp.outbox.poll-interval</code> for the one case nothing can be read from
- * the table: work another node wrote down before it died (see {@link DueEntryPoller}).
+ * It does not flush on a fixed rhythm. A flush costs three database commands, whether anything
+ * waits or not. So between two flushes the poller sleeps until the moment when the table of
+ * gruelbox says the next entry is due ({@link GruelboxPhaseTwoOutbox#earliestDueAt()}). It sleeps
+ * at most <code>vanillabp.outbox.poll-interval</code>, for the one case which the table cannot
+ * show: work which another node wrote down before it died (see {@link DueEntryPoller}).
  * <p>
- * Starting the poller is also what lets an outbox built with VanillaBP's
- * {@link GruelboxRedispatchAwareSubmitter} dispatch after a commit at all. That
- * submitter keeps its entries until this dispatcher runs. A workflow started while
- * Spring Boot answers requests and the models are still on their way to the BPMS
- * therefore waits for the first poll, instead of reaching a BPMS which cannot know
- * it.
+ * Starting the poller is also what lets an outbox built with the
+ * {@link GruelboxRedispatchAwareSubmitter} of VanillaBP dispatch after a commit at all. That
+ * submitter keeps its entries until this dispatcher runs. Spring Boot answers requests while the
+ * models are still on their way to the BPMS. A workflow started then waits for the first poll. It
+ * does not reach a BPMS which cannot know it yet.
  * <p>
- * The poller runs on a private single-thread daemon executor - no
- * {@link org.springframework.scheduling.TaskScheduler} bean is registered or used, so
- * an application's own scheduling setup (e.g. <code>&#64;EnableScheduling</code>)
- * stays unaffected.
+ * The poller runs on a private daemon executor with one thread. No
+ * {@link org.springframework.scheduling.TaskScheduler} bean is registered or used. So the
+ * scheduling setup of the application (e.g. <code>&#64;EnableScheduling</code>) stays as it is.
  * <p>
- * <strong>How this store holds an entry while it dispatches it.</strong> The stores VanillaBP
- * owns lease an entry and renew the lease while the dispatch runs
- * ({@link io.vanillabp.integration.adapter.migration.outbox.DispatchLease}), so a slow
- * dispatch is never carried out twice and costs no attempt. Gruelbox does it differently and
- * needs nothing added: its flush selects with <code>FOR UPDATE SKIP LOCKED</code> and then
- * locks the row it is about to invoke for, so the flush of another node skips an entry
- * somebody is dispatching however long that takes. The price is the one VanillaBP's own
- * stores avoid - the lock is a database transaction held for the length of the dispatch, and
- * therefore a connection - and it is gruelbox' design, not something this dispatcher chooses.
+ * <strong>How this store holds an entry while it dispatches it.</strong> The stores which
+ * VanillaBP owns lease an entry, and they renew the lease while the dispatch runs
+ * ({@link io.vanillabp.integration.adapter.migration.outbox.DispatchLease}). So a slow dispatch
+ * never runs twice, and it costs no attempt. Gruelbox does this differently and needs nothing
+ * added. Its flush selects with <code>FOR UPDATE SKIP LOCKED</code>, and then it locks the row it
+ * is about to dispatch. So the flush of another node skips an entry which somebody dispatches,
+ * however long that takes. The price is the one which the stores of VanillaBP avoid. The lock is
+ * a database transaction which is held for the whole dispatch, and so is a connection. That is the
+ * design of gruelbox, not a choice of this dispatcher.
  * <p>
- * What it does mean is that gruelbox counts an attempt when it takes an entry rather than
- * when the attempt ended. Since nobody else can take that entry meanwhile, the two numbers
- * are the same here, and an entry only looks attempted while it is still travelling. The
- * table belongs to gruelbox, so this is written down rather than changed.
+ * It also means that gruelbox counts an attempt when it takes an entry, not when the attempt
+ * ended. Nobody else can take that entry meanwhile, so the two numbers are the same here. An entry
+ * only looks attempted while it is still on its way. The table belongs to gruelbox, so this is
+ * written down and not changed.
  * <p>
- * A dispatch which knows that repeating helps in a moment says so
- * ({@link io.vanillabp.integration.spi.PhaseTwoRetryLater} - a workflow its BPMS has not
- * made searchable yet), and gruelbox would schedule the next attempt from the
- * <code>attemptFrequency</code> of the whole outbox. The window the dispatch named is
- * written over it by {@link GruelboxPhaseTwoFailureListener}, so such an entry is due here
- * when it is due on the stores VanillaBP wrote itself. It is dispatched at the poll after
- * that moment, and the poller above sleeps until the earliest due moment or the configured
- * cap, whichever comes first ({@link DueEntryPoller}), so the delay this store adds to the
- * window is at most <code>vanillabp.outbox.poll-interval</code>. Nothing waits on any
- * thread for it, so the entries of every other workflow are dispatched while that one is
- * due again.
+ * A dispatch which knows that a repetition will help soon says so
+ * ({@link io.vanillabp.integration.spi.PhaseTwoRetryLater}, for a workflow which its BPMS has not
+ * made searchable yet). Gruelbox would plan the next attempt from the
+ * <code>attemptFrequency</code> of the whole outbox. {@link GruelboxPhaseTwoFailureListener}
+ * overwrites that with the window the dispatch named. So such an entry is due here at the same
+ * time as on the stores VanillaBP writes itself. It is dispatched at the first poll after that
+ * moment. The poller sleeps until the earliest due moment or the configured cap, whichever comes
+ * first ({@link DueEntryPoller}). So this store adds at most
+ * <code>vanillabp.outbox.poll-interval</code> to the window. No thread waits for it, so the
+ * entries of every other workflow are dispatched while that one waits.
  */
 @Slf4j
 public class GruelboxPhaseTwoOutboxDispatcher implements OutboxHousekeeping.Store {
@@ -81,52 +76,50 @@ public class GruelboxPhaseTwoOutboxDispatcher implements OutboxHousekeeping.Stor
   private final TransactionOutbox transactionOutbox;
 
   /**
-   * The store this dispatcher polls. It answers when the next flush has something to do.
-   * Never <code>null</code>: that question is asked on every poll.
+   * The store this dispatcher polls. It answers when the next flush has something to do. It is
+   * never <code>null</code>, because every poll asks that question.
    */
   private final GruelboxPhaseTwoOutbox outbox;
 
   /**
-   * The submitter whose gate is opened when polling starts, <code>null</code> for an
-   * outbox built with a submitter of somebody else's.
+   * The submitter whose gate is opened when polling starts. It is <code>null</code> for an outbox
+   * built with a submitter from somebody else.
    */
   private final GruelboxRedispatchAwareSubmitter submitter;
 
   private final DueEntryPoller poller;
 
   /**
-   * Where the payloads of the entries a flush finished are removed. Never
-   * <code>null</code>: a dispatcher is built with the place it house-keeps, the way the
-   * store is built with the place it writes to.
+   * Where the payloads of the entries a flush finished are removed. It is never
+   * <code>null</code>. A dispatcher is built with the place it cleans up, the way the store is
+   * built with the place it writes to.
    */
   private final PhaseTwoPayloadStore payloadStore;
 
   /**
-   * Where this node says that it is house-keeping this store tonight, so no other node
-   * measures its work at the same time.
+   * Where this node says that it cleans up this store tonight. So no other node measures its work
+   * at the same time.
    */
   private final JdbcHousekeepingLease housekeepingLease;
 
   /**
-   * What removes the orphaned payloads, and when. The dispatched entries are gruelbox'
-   * own business - see {@link #removeDispatchedEntriesOlderThan(Instant, int)}.
+   * What removes the orphaned payloads, and when. The dispatched entries are the business of
+   * gruelbox, see {@link #removeDispatchedEntriesOlderThan(Instant, int)}.
    */
   private final OutboxHousekeeping housekeeping;
 
   /**
-   * Polls the outbox, holds its submitter back until it does and house-keeps the
-   * payloads nobody removed. Building this dispatcher is what closes the submitter's
-   * gate, so a submitter never waits for a dispatcher which does not exist (see
-   * {@link GruelboxRedispatchAwareSubmitter}).
+   * Polls the outbox, holds its submitter back until it does, and cleans up the payloads which
+   * nobody removed. Building this dispatcher closes the gate of the submitter. So a submitter never
+   * waits for a dispatcher which does not exist (see {@link GruelboxRedispatchAwareSubmitter}).
    *
    * @param transactionOutbox The outbox to poll
    * @param properties The bound <code>vanillabp.outbox</code> section
-   * @param submitter The submitter the outbox was built with, <code>null</code> where
-   *          gruelbox was built with a submitter of somebody else's
+   * @param submitter The submitter the outbox was built with, <code>null</code> if gruelbox
+   *          was built with a submitter from somebody else
    * @param outbox The store, asked when the next flush has something to do
    * @param payloadStore Where the payloads of this outbox lie
-   * @param housekeepingLease Where this node says that it is house-keeping this store
-   *          tonight
+   * @param housekeepingLease Where this node says that it cleans up this store tonight
    * @param metrics What the numbers of a closed housekeeping window are published to
    * @throws IllegalArgumentException If the store or the payload store is missing
    */
@@ -178,12 +171,11 @@ public class GruelboxPhaseTwoOutboxDispatcher implements OutboxHousekeeping.Stor
   }
 
   /**
-   * Refuses a dispatcher which has no payloads to house-keep.
+   * Refuses a dispatcher which has no payloads to clean up.
    * <p>
-   * The store beside this class is built with the payload store as well, and for the
-   * reason it is asked here: a check which waits for the right call reports a setup
-   * problem while the application is working, and the dispatcher is built where the
-   * answer is already known.
+   * The store next to this class is built with the payload store as well, for the same reason. A
+   * check which waits for the right call reports a setup problem while the application works. The
+   * dispatcher is built at a point where the answer is already known.
    *
    * @param payloadStore Where the payloads of this outbox lie
    */
@@ -216,11 +208,10 @@ public class GruelboxPhaseTwoOutboxDispatcher implements OutboxHousekeeping.Stor
   }
 
   /**
-   * Starts the poller. The first run is executed immediately, dispatching
-   * committed-but-unprocessed entries of a previously crashed instance and those the
-   * submitter kept while the application was starting. The listener
-   * order guarantees that workflow processing started BEFORE any recovered entry is
-   * dispatched (see
+   * Starts the poller. The first run starts at once. It dispatches the entries which an instance
+   * committed but did not process before it crashed, and those the submitter kept while the
+   * application started. The order of the listeners makes sure that workflow processing started
+   * BEFORE any recovered entry is dispatched (see
    * {@link SpringBootDeploymentService#OUTBOX_DISPATCHER_LISTENER_ORDER}).
    */
   @Order(SpringBootDeploymentService.OUTBOX_DISPATCHER_LISTENER_ORDER)
@@ -228,8 +219,8 @@ public class GruelboxPhaseTwoOutboxDispatcher implements OutboxHousekeeping.Stor
   public void startPolling() {
 
     // opened before the poller starts, because a flush hands what it picked up to
-    // this same submitter: a gate still closed would keep those entries, and each of
-    // them would be due again only after 'attempt-frequency' instead of at once
+    // this same submitter. A gate which is still closed would keep those entries, and
+    // each of them would be due again only after 'attempt-frequency', not at once
     if (submitter != null) {
       submitter.dispatchingStarted();
     }
@@ -239,8 +230,8 @@ public class GruelboxPhaseTwoOutboxDispatcher implements OutboxHousekeeping.Stor
   }
 
   /**
-   * Stops the poller when the application context closes. An entry which was not dispatched
-   * stays in gruelbox' table, and the first flush of the next start carries it.
+   * Stops the poller when the application context closes. An entry which was not dispatched stays
+   * in the table of gruelbox, and the first flush of the next start carries it.
    */
   @PreDestroy
   public void stopPolling() {
@@ -251,15 +242,15 @@ public class GruelboxPhaseTwoOutboxDispatcher implements OutboxHousekeeping.Stor
   }
 
   /**
-   * Flushes the outbox until no more work is done. Exceptions are caught to keep the
-   * poller alive.
+   * Flushes the outbox until there is no more work. Exceptions are caught, so the poller stays
+   * alive.
    */
   private void flush() {
 
     try {
       //noinspection StatementWithEmptyBody
       while (transactionOutbox.flush()) {
-        // repeat until all due outbox entries were processed
+        // empty: the condition does the work, until no due entry is left
       }
     } catch (Exception e) {
       log.error("Flushing the VanillaBP phase-two outbox failed - will retry", e);
@@ -293,11 +284,10 @@ public class GruelboxPhaseTwoOutboxDispatcher implements OutboxHousekeeping.Stor
   /**
    * {@inheritDoc}
    * <p>
-   * Nothing, because gruelbox deletes its own dispatched entries. A flush of that library
-   * removes what its retention threshold lets go, and the threshold is
-   * <code>vanillabp.outbox.retention</code>. The table belongs to gruelbox, so this is
-   * written down rather than changed: on this store the window governs the payloads
-   * alone, and the entries leave on the rhythm of the flush as they always did.
+   * Nothing, because gruelbox deletes its own dispatched entries. A flush of that library removes
+   * what its retention lets go, and the retention is <code>vanillabp.outbox.retention</code>. The
+   * table belongs to gruelbox, so this is written down and not changed. On this store, the window
+   * only decides about the payloads. The entries leave with the flushes, as they always did.
    */
   @Override
   public int removeDispatchedEntriesOlderThan(
@@ -320,9 +310,9 @@ public class GruelboxPhaseTwoOutboxDispatcher implements OutboxHousekeeping.Stor
   /**
    * {@inheritDoc}
    * <p>
-   * What gruelbox has not deleted yet. This node removes none of them itself, so the
-   * number says how far the flushes of the library have got rather than how far the
-   * window did - which is the truth an operator of this store needs.
+   * What gruelbox has not deleted yet. This node removes none of them itself. So the number says
+   * how far the flushes of the library got, not how far the window got. That is what an operator
+   * of this store needs to know.
    */
   @Override
   public OptionalLong countDispatchedEntriesOlderThan(

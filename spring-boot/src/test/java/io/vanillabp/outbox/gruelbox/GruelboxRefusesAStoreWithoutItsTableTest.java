@@ -17,15 +17,15 @@ import io.vanillabp.integration.spi.PhaseTwoPayloadStore;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 
 /**
- * An application which builds the gruelbox store itself and leaves out one of the places
- * that store works on.
+ * Holds what happens to an application which builds the gruelbox store itself and leaves out one
+ * of the places that store works on.
  * <p>
- * Without the data source or the name of gruelbox' table it hands entries to gruelbox and
- * can do nothing else: it cannot free the key of an entry which was dispatched, cannot let
- * a younger call take the place of a waiting one, and answers the payload housekeeping that
- * every payload is still named, which is the answer that keeps the payload table growing
- * for good. Without a payload store it loses what a call carries. None of that shows up as
- * an error later on, so each of them is refused where the store is built.
+ * Without the data source or the name of the gruelbox table, the store hands entries to gruelbox
+ * and can do nothing else. It cannot free the key of an entry which was dispatched. It cannot let
+ * a younger call take the place of a waiting one. And it tells the payload housekeeping that every
+ * payload is still named, so the payload table grows for good. Without a payload store, it loses
+ * what a call carries. None of that shows up as an error later on. So each of them is refused when
+ * the store is built.
  */
 @ExtendWith(SuppressOutputExtension.class)
 public class GruelboxRefusesAStoreWithoutItsTableTest {
@@ -43,10 +43,10 @@ public class GruelboxRefusesAStoreWithoutItsTableTest {
 
     final var message = refused.getMessage();
     assertTrue(message.contains("without a data source"), message);
-    // what it would cost, in both of its shapes
+    // what it would cost, in both of its forms
     assertTrue(message.contains("discards the next operation"), message);
     assertTrue(message.contains("removes no payload"), message);
-    // and the two ways to a complete store
+    // the two ways to a complete store
     assertTrue(message.contains("Pass the data source"), message);
     assertTrue(message.contains("GruelboxPhaseTwoOutboxAutoConfiguration"), message);
 
@@ -97,7 +97,7 @@ public class GruelboxRefusesAStoreWithoutItsTableTest {
     assertTrue(message.contains("without a payload store"), message);
     // what it would cost
     assertTrue(message.contains("reach the BPMS without what it carries"), message);
-    // and the two ways to a complete store
+    // the two ways to a complete store
     assertTrue(message.contains("Pass a PhaseTwoPayloadStore"), message);
     assertTrue(message.contains("GruelboxPhaseTwoOutboxAutoConfiguration"), message);
 

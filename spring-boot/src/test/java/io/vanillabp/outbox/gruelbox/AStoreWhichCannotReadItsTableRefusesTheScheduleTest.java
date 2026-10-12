@@ -26,20 +26,17 @@ import io.vanillabp.integration.spi.PhaseTwoPayloadStore;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 
 /**
- * Every call which carries an idempotency key is read against gruelbox' table before it is
- * scheduled: that read is how the key of a dispatched entry is freed and how a younger call
- * takes the place of one which is still waiting. A store which cannot do that read must not
- * schedule anything.
+ * Holds that a store which cannot read its table schedules nothing. Every call which carries an
+ * idempotency key is checked against the gruelbox table before it is scheduled. That read frees the
+ * key of a dispatched entry, and it lets a younger call take the place of one which still waits.
  * <p>
- * Swallowing the failure would be the dangerous answer. The schedule would then go in without
- * the key, so the operation would be planned a second time beside an entry which is still
- * waiting for it, and nobody would learn about the table until a workflow was carried out
- * twice. So the store refuses, in the transaction of the caller, and the message names the
- * workflow and the table it could not read.
+ * Swallowing the failure would be the dangerous answer. The schedule would then go in without the
+ * key. So the operation would be planned a second time, next to an entry which still waits for
+ * it. Nobody would learn about the table until a workflow ran twice. So the store refuses, in the
+ * transaction of the caller, and the message names the workflow and the table it could not read.
  * <p>
- * The table of this test's database is never created, which is the shape an application meets
- * when a schema was handed over and this one table forgotten - or when somebody drops it under
- * a running node.
+ * The database of this test never gets the table. An application meets that when a schema was
+ * handed over and this one table was forgotten, or when somebody drops it under a running node.
  */
 @ExtendWith(SuppressOutputExtension.class)
 public class AStoreWhichCannotReadItsTableRefusesTheScheduleTest {
@@ -51,8 +48,8 @@ public class AStoreWhichCannotReadItsTableRefusesTheScheduleTest {
   private TransactionTemplate transactions;
 
   /**
-   * What gruelbox would have been asked to schedule. It records nothing, because a schedule
-   * must not reach it: the read comes first, and this test is about the read failing.
+   * What gruelbox would have been asked to schedule. It records nothing, because no schedule may
+   * reach it. The read comes first, and this test is about the read failing.
    */
   private TransactionOutbox gruelbox;
 
@@ -60,7 +57,7 @@ public class AStoreWhichCannotReadItsTableRefusesTheScheduleTest {
   public void aDatabaseWithoutGruelboxTable() {
 
     // one connection kept open: the in-memory database lives as long as it does. Nothing
-    // migrates gruelbox' schema here, which is the point of this test
+    // creates the gruelbox schema here, and that is the point of this test
     dataSource = new SingleConnectionDataSource(
         "jdbc:h2:mem:%s;DB_CLOSE_DELAY=-1".formatted(UUID.randomUUID()), "sa", "", true);
     dataSource.setDriverClassName("org.h2.Driver");
@@ -115,8 +112,8 @@ public class AStoreWhichCannotReadItsTableRefusesTheScheduleTest {
         refused.getCause(),
         "what the database said belongs in the trail, because it names the table and the schema");
 
-    // and nothing was handed to gruelbox: a schedule without its key is exactly the
-    // duplicate this refusal is here to prevent
+    // nothing was handed to gruelbox: a schedule without its key is exactly the
+    // duplicate this refusal prevents
     Mockito.verifyNoInteractions(gruelbox);
 
   }

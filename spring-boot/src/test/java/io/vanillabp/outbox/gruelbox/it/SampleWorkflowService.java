@@ -6,8 +6,8 @@ import io.vanillabp.spi.process.ProcessService;
 import io.vanillabp.spi.service.WorkflowService;
 
 /**
- * The workflow whose start writes the outbox entries these tests read. It names no BPMN
- * process, so the convention applies and the process id is the name of this class.
+ * The workflow whose start writes the outbox entries these tests read. It names no BPMN process.
+ * So the convention applies, and the process id is the name of this class.
  */
 @Service
 @WorkflowService(workflowAggregateClass = Aggregate.class)

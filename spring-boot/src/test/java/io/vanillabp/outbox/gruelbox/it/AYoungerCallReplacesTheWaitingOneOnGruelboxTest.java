@@ -25,19 +25,18 @@ import io.vanillabp.outbox.gruelbox.GruelboxPhaseTwoOutboxAutoConfiguration;
 import io.vanillabp.spi.process.ProcessService;
 
 /**
- * The promise every VanillaBP outbox makes, measured on this store: a call which says it
- * replaces what is still waiting takes the place of the waiting entry, and the handler is
- * called once, with the younger state.
+ * Holds the promise every VanillaBP outbox makes, on this store. A call which says that it replaces
+ * what still waits takes the place of the waiting entry. The handler is called once, with the
+ * younger state.
  * <p>
- * The way there differs from the stores VanillaBP writes itself, which is why this test
- * exists rather than a second run of theirs:
- * gruelbox has no replace in its API, so the waiting row is DELETED and the younger call
- * is scheduled again under the same unique request id. What decides whether that is
- * allowed is gruelbox' <code>version</code> column together with the register of the
- * submitter, and where either says a dispatch has the entry the younger call becomes a
- * SECOND entry with no unique request id at all.
+ * The way there differs from the stores VanillaBP writes itself. That is why this test exists, and
+ * not just a second run of their tests. Gruelbox has no replace in its API. So the waiting row is
+ * DELETED, and the younger call is scheduled again under the same unique request id. Two things
+ * decide whether that is allowed: the <code>version</code> column of gruelbox, and the register of
+ * the submitter. If either says that a dispatch has the entry, the younger call becomes a SECOND
+ * entry, with no unique request id at all.
  * <p>
- * The application runs on a database of its own, so nothing another test left behind is
+ * The application runs on a database of its own, so nothing which another test left behind is
  * read here.
  */
 @ExtendWith(SuppressOutputExtension.class)
@@ -55,15 +54,14 @@ public class AYoungerCallReplacesTheWaitingOneOnGruelboxTest {
   private static final String TABLE = GruelboxPhaseTwoOutboxAutoConfiguration.DEFAULT_OUTBOX_TABLE_NAME;
 
   /**
-   * How long an assertion waits for something the outbox does on its own thread. A
-   * deadline rather than a pause: a test which is right stops waiting as soon as the
-   * entry moved.
+   * How long an assertion waits for something which the outbox does on its own thread. It is a
+   * deadline, not a pause. A test which is right stops waiting as soon as the entry moved.
    */
   private static final long PATIENCE = 20000L;
 
   /**
-   * How long a test waits before it says that nothing more came. Three of the half-second
-   * windows these tests dispatch in, and a guard rather than a measurement of speed.
+   * How long a test waits before it says that nothing more came. It is three of the half-second
+   * windows these tests dispatch in. It is a guard, not a measurement of speed.
    */
   private static final long UNTIL_NOTHING_MORE_CAN_COME = 1500L;
 
@@ -97,8 +95,8 @@ public class AYoungerCallReplacesTheWaitingOneOnGruelboxTest {
   }
 
   /**
-   * How many rows of gruelbox' table carry that unique request id. It is the id the store
-   * deduplicates on, so this is the number a replacement must not raise.
+   * How many rows of the gruelbox table carry that unique request id. The store deduplicates on
+   * this id, so a replacement must not raise this number.
    */
   private long countEntriesOf(
       final String idempotencyKey) throws SQLException {
@@ -137,9 +135,9 @@ public class AYoungerCallReplacesTheWaitingOneOnGruelboxTest {
     final var younger = new AtomicReference<String>();
     final var key = new AtomicReference<String>();
 
-    // both ride ONE transaction on purpose: gruelbox hands an entry to its submitter the
-    // moment the scheduling transaction commits, so before that commit the first entry
-    // is certainly still waiting
+    // both use ONE transaction on purpose. Gruelbox hands an entry to its submitter the
+    // moment the scheduling transaction commits. So before that commit, the first entry
+    // surely still waits
     final var aggregate = transactionTemplate.execute(status -> {
       final var newAggregate = new Aggregate();
       newAggregate.setContent("gruelbox-replace-waiting");
@@ -158,15 +156,15 @@ public class AYoungerCallReplacesTheWaitingOneOnGruelboxTest {
     });
     assertNotNull(aggregate);
 
-    // one row under that key: the younger call took the row of the waiting one rather
-    // than standing beside it
+    // one row under that key: the younger call took the row of the waiting one, and does
+    // not stand next to it
     assertEquals(1L, countEntriesOf(key.get()));
 
     final var dispatched = extension.awaitDispatched(1, PATIENCE);
     assertArrayEquals(payloadOf("{\"amount\":2}"), dispatched.getFirst().payload());
     assertEquals(younger.get(), dispatched.getFirst().payloadReference());
 
-    // and the one which was dispatched is the only one there ever was
+    // the one which was dispatched is the only one there ever was
     Thread.sleep(UNTIL_NOTHING_MORE_CAN_COME);
     assertEquals(1, extension.getDispatched().size());
 
@@ -196,8 +194,8 @@ public class AYoungerCallReplacesTheWaitingOneOnGruelboxTest {
       });
       assertNotNull(aggregate);
 
-      // the dispatch stands inside the handler, so the register of the submitter names
-      // this entry and the store must not take its row away
+      // the dispatch waits inside the handler. So the register of the submitter names
+      // this entry, and the store must not take its row away
       extension.awaitHeldDispatchEntered(PATIENCE);
 
       final var scheduled = transactionTemplate
@@ -212,14 +210,14 @@ public class AYoungerCallReplacesTheWaitingOneOnGruelboxTest {
                           payloadOf("{\"amount\":2}"))));
       assertTrue(Boolean.TRUE.equals(scheduled));
 
-      // two rows: the one on its way, which keeps the key, and the one this call became,
-      // which carries none because the key belongs to the entry being dispatched
+      // two rows: the one on its way, which keeps the key, and the one this call became.
+      // That one carries no key, because the key belongs to the entry being dispatched
       assertTrue(countAllEntries() >= 2, "the younger call has to become a second entry");
     } finally {
       extension.releaseHeldDispatch();
     }
 
-    // both reach the handler - which of them first is the dispatcher's business
+    // both reach the handler. Which one comes first is up to the dispatcher
     final var payloads = extension
         .awaitDispatched(2, PATIENCE)
         .stream()

@@ -26,17 +26,17 @@ import io.vanillabp.outbox.gruelbox.GruelboxPhaseTwoOutboxAutoConfiguration;
 import io.vanillabp.spi.process.ProcessService;
 
 /**
- * What this store does with a failure the extension or adapter calls permanent
- * ({@link io.vanillabp.integration.spi.PhaseTwoPermanentFailure}), measured against what
- * the stores VanillaBP writes itself do: the entry is attempted once, it is blocked, and
- * the next request of the same operation gets an entry of its own.
+ * Holds what this store does with a failure which the extension or the adapter calls permanent
+ * ({@link io.vanillabp.integration.spi.PhaseTwoPermanentFailure}), compared with the stores
+ * VanillaBP writes itself. The entry is attempted once, it is blocked, and the next request of the
+ * same operation gets an entry of its own.
  * <p>
- * The last point is the one gruelbox did not keep on its own. Its unique constraint spans
- * a blocked row as well, so the operation which failed could not be planned again until
- * somebody removed the row. The store now frees the key of a blocked row when the same
- * key is planned again, and the blocked row stays where an operator finds it.
+ * Gruelbox did not keep the last promise by itself. Its unique constraint covers a blocked row as
+ * well. So the operation which failed could not be planned again until somebody removed the row.
+ * Now the store frees the key of a blocked row when the same key is planned again. The blocked row
+ * stays where an operator finds it.
  * <p>
- * The application runs on a database of its own, so nothing another test left behind is
+ * The application runs on a database of its own, so nothing which another test left behind is
  * read here.
  */
 @ExtendWith(SuppressOutputExtension.class)
@@ -51,15 +51,15 @@ public class APermanentFailureOnGruelboxIsBlockedAndFreesItsKeyTest {
   private static final String PROCESS = SampleWorkflowService.class.getSimpleName();
 
   /**
-   * How long an assertion waits for something the outbox does on its own thread. It is a
-   * deadline rather than a pause.
+   * How long an assertion waits for something which the outbox does on its own thread. It is a
+   * deadline, not a pause.
    */
   private static final long PATIENCE = 20000L;
 
   /**
-   * How long the first test gives the outbox to repeat a blocked entry, which it must not
-   * do. The test application flushes every half second and retries after half a second, so
-   * this is four chances to do it wrong.
+   * How long the first test gives the outbox to repeat a blocked entry, which it must not do. The
+   * test application flushes every half second and retries after half a second. So the outbox gets
+   * four chances to do it wrong.
    */
   private static final long FOUR_FLUSHES = 2000L;
 
@@ -96,10 +96,10 @@ public class APermanentFailureOnGruelboxIsBlockedAndFreesItsKeyTest {
   }
 
   /**
-   * One row of gruelbox' table, as far as this test reads it.
+   * One row of the gruelbox table, as far as this test reads it.
    *
    * @param id The id gruelbox gave the entry
-   * @param uniqueRequestId The key, <code>null</code> where it was freed
+   * @param uniqueRequestId The key, <code>null</code> if it was freed
    * @param attempts How many attempts gruelbox counted
    * @param blocked Whether the entry is blocked
    * @param processed Whether the entry was dispatched
@@ -137,8 +137,8 @@ public class APermanentFailureOnGruelboxIsBlockedAndFreesItsKeyTest {
   }
 
   /**
-   * The rows of one operation: the one which carries its key, and the blocked one where its
-   * key was freed. A row which gave its key away is found by its id.
+   * The rows of one operation: the one which carries its key, and the blocked one if its key was
+   * freed. A row which gave its key away is found by its id.
    */
   private List<Row> rowsOf(
       final String idempotencyKey,
@@ -210,8 +210,8 @@ public class APermanentFailureOnGruelboxIsBlockedAndFreesItsKeyTest {
 
     final var key = idempotencyKeyOf(aggregate, "created");
     final var blocked = awaitBlocked(key);
-    // a blocked entry is one no flush reads again, and this is the time it would take
-    // gruelbox to try four more times if it did
+    // no flush reads a blocked entry again. If one did, gruelbox would try four more
+    // times in this time
     Thread.sleep(FOUR_FLUSHES);
 
     assertEquals(1, extension.getAttempts(), "a failure repeating cannot fix was repeated");
@@ -223,10 +223,10 @@ public class APermanentFailureOnGruelboxIsBlockedAndFreesItsKeyTest {
   }
 
   /**
-   * The case of the Business Cockpit: a change whose workflow has no user task after ten
-   * minutes is given up, and the next change of the same kind has to get through. On the
-   * stores VanillaBP writes itself that is so because blocking frees the key. This store
-   * frees it when the key is planned again.
+   * The case of the Business Cockpit. A change whose workflow has no user task after ten minutes is
+   * given up, and the next change of the same kind has to get through. The stores VanillaBP writes
+   * itself manage that, because blocking frees the key. This store frees it when the key is
+   * planned again.
    */
   @Test
   @DisplayName("The next request of the same key gets an entry of its own and the blocked one stays")
@@ -257,8 +257,8 @@ public class APermanentFailureOnGruelboxIsBlockedAndFreesItsKeyTest {
   }
 
   /**
-   * The way back the README names: gruelbox' own <code>unblock</code>, which is the same
-   * statement an operator runs by hand. The entry is dispatched by the next flush.
+   * The way back which the README names: the <code>unblock</code> of gruelbox, the same statement
+   * an operator runs by hand. The next flush dispatches the entry.
    */
   @Test
   @DisplayName("An entry opened again is dispatched by the next flush")

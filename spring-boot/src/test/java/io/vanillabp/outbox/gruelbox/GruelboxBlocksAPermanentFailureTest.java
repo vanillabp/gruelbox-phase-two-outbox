@@ -36,15 +36,14 @@ import io.vanillabp.integration.spi.PhaseTwoPermanentFailure;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 
 /**
- * Gruelbox retries every failure the same way, fifty times by default, and the adapter's
- * answer that repeating cannot help used to be lost on this store - which is the default
- * of a Spring Boot application on JPA. It is not lost any more: the listener writes the
- * block itself, and this test reads the row back to prove that the write went through
- * against the version gruelbox had just committed.
+ * Holds that the listener blocks a failure which the adapter calls permanent. Gruelbox retries
+ * every failure the same way, fifty times by default. The answer of the adapter that repeating
+ * cannot help used to get lost on this store. This store is the default of a Spring Boot
+ * application on JPA. Now the listener writes the block itself. This test reads the row back, to
+ * show that the write went through on the version gruelbox had just committed.
  * <p>
- * The entry is saved and handed to the listener directly rather than scheduled. Nothing
- * dispatches here, so the row an assertion reads is the row this test wrote, and the test
- * is not racing a dispatcher thread.
+ * The entry is saved and handed to the listener directly, not scheduled. Nothing dispatches here.
+ * So an assertion reads the row this test wrote, and the test does not race a dispatcher thread.
  */
 @ExtendWith(SuppressOutputExtension.class)
 public class GruelboxBlocksAPermanentFailureTest {
@@ -123,8 +122,8 @@ public class GruelboxBlocksAPermanentFailureTest {
   }
 
   /**
-   * An entry as gruelbox holds it after it committed a failed attempt: the attempt is
-   * counted and the version is the one that commit wrote.
+   * An entry as gruelbox holds it after it committed a failed attempt. The attempt is counted, and
+   * the version is the one which that commit wrote.
    */
   private TransactionOutboxEntry savedEntry(
       final Invocation invocation,
@@ -226,7 +225,7 @@ public class GruelboxBlocksAPermanentFailureTest {
     assertTrue(reported.contains("4711"), reported);
     assertTrue(reported.contains("camunda7"), reported);
     assertTrue(reported.contains(entry.getId()), reported);
-    // the line is where an operator starts, so it says where the way back is described
+    // an operator starts at this line, so it says where the way back is described
     assertTrue(reported.contains(GruelboxPhaseTwoFailureListener.BLOCKED_ENTRIES_GUIDE), reported);
 
   }
@@ -246,9 +245,9 @@ public class GruelboxBlocksAPermanentFailureTest {
   }
 
   /**
-   * Gruelbox writes the block itself once <code>block-after-attempts</code> are used up,
-   * and it logs a line naming the entry id. The listener adds the workflow to it and
-   * counts the entry, and it must not write a second block or a second error.
+   * Gruelbox writes the block itself once <code>block-after-attempts</code> are used up, and it
+   * logs a line which names the id of the entry. The listener adds the workflow and counts the
+   * entry. It must not write a second block or a second error.
    */
   @Test
   @DisplayName("An entry gruelbox gave up on itself is reported once and not blocked again")
@@ -268,8 +267,8 @@ public class GruelboxBlocksAPermanentFailureTest {
   }
 
   /**
-   * The outbox bean is VanillaBP's, but an application may schedule work of its own on
-   * it. Blocking somebody else's entry is not this listener's business.
+   * The outbox bean belongs to VanillaBP, but an application may schedule work of its own on it.
+   * Blocking the entry of somebody else is not the business of this listener.
    */
   @Test
   @DisplayName("An entry which is not a phase-two dispatch is left alone")
@@ -296,9 +295,9 @@ public class GruelboxBlocksAPermanentFailureTest {
   }
 
   /**
-   * Gruelbox takes one listener, so an application which brings its own would lose it to
-   * VanillaBP's. The auto-configuration chains them instead, and this is what the chain
-   * has to deliver.
+   * Gruelbox takes one listener. So an application which brings its own would lose it to the one
+   * of VanillaBP. The auto-configuration chains them instead, and this is what the chain has to
+   * deliver.
    */
   @Test
   @DisplayName("A listener the application brought keeps being called")

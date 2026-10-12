@@ -24,18 +24,17 @@ import io.vanillabp.integration.spi.PhaseTwoCall;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 
 /**
- * gruelbox owns the table its unique request IDs live in, and its unique constraint
- * spans the entries it retains after a dispatch as well. Since a key deduplicates what
- * is PLANNED and not what happened, this
- * store has to release a retained entry when a new operation of the same key arrives -
- * which is what is pinned here, together with the length gruelbox accepts at all.
+ * Holds that this store releases a retained entry when a new operation with the same key arrives,
+ * and which key length gruelbox accepts at all. Gruelbox owns the table of its unique request IDs.
+ * Its unique constraint also covers the entries it keeps after a dispatch. But a key deduplicates
+ * what is PLANNED, not what happened. So the store has to release the retained entry.
  * <p>
- * <strong>The rows an assertion depends on are written by this test, not scheduled.</strong>
- * gruelbox dispatches an entry right after the commit which scheduled it, on an executor
- * of its own, and writes the outcome of that dispatch back into the row. A test which
- * scheduled its own precondition and then looked at the row would be racing that thread,
- * and it would lose on a machine slower than the one it was written on. Where a schedule
- * IS the subject, nothing afterwards reads its row again.
+ * <strong>This test writes the rows an assertion depends on. It does not schedule them.</strong>
+ * Gruelbox dispatches an entry right after the commit which scheduled it, on an executor of its
+ * own. It writes the outcome of that dispatch back into the row. A test which scheduled its own
+ * precondition and then looked at the row would race that thread. It would lose on a machine which
+ * is slower than the one it was written on. Where a schedule IS the subject, nothing reads its row
+ * again afterwards.
  */
 @ExtendWith(SuppressOutputExtension.class)
 public class GruelboxDeduplicationWindowTest {
@@ -43,9 +42,9 @@ public class GruelboxDeduplicationWindowTest {
   private static final String TABLE = GruelboxPhaseTwoOutboxAutoConfiguration.DEFAULT_OUTBOX_TABLE_NAME;
 
   /**
-   * One context for the whole class: gruelbox resolves the invocation it dispatches
-   * through it, after the commit and on its own thread, which may be after the test
-   * which scheduled it has finished.
+   * One context for the whole class. Gruelbox finds the invocation it dispatches through it,
+   * after the commit and on its own thread. That may be after the test which scheduled it has
+   * finished.
    */
   private static AnnotationConfigApplicationContext context;
 
@@ -70,15 +69,15 @@ public class GruelboxDeduplicationWindowTest {
   }
 
   /**
-   * A store on a fresh in-memory database, with gruelbox' own migration applied.
+   * A store on a fresh in-memory database, with the migration of gruelbox applied.
    */
   private static GruelboxPhaseTwoOutbox outbox(
       final DataSource dataSource) {
 
     if (context == null) {
       context = new AnnotationConfigApplicationContext();
-      // registered because gruelbox resolves the invocation through the context; what
-      // it does is irrelevant here, the subject being what happens before the dispatch
+      // registered because gruelbox finds the invocation through the context. What it does
+      // does not matter here. The subject is what happens before the dispatch
       context
           .registerBean(
               GruelboxPhaseTwoDispatch.class,
@@ -89,7 +88,6 @@ public class GruelboxDeduplicationWindowTest {
                   workflowAggregateId,
                   adapterId,
                   serializedArgs) -> {
-                // nothing to dispatch in this test
               });
       context.refresh();
     }
@@ -104,8 +102,8 @@ public class GruelboxDeduplicationWindowTest {
                 io.vanillabp.integration.adapter.migration.observability.VanillaBpMetrics.class),
             context.getBeanProvider(com.gruelbox.transactionoutbox.TransactionOutboxListener.class),
             new GruelboxRedispatchAwareSubmitter(com.gruelbox.transactionoutbox.Submitter.withDefaultExecutor()));
-    // no call of this test carries a payload, and the store is built with one anyway:
-    // the place a payload goes belongs to the outbox the way gruelbox' table does
+    // no call of this test carries a payload, but the store is built with a payload store
+    // anyway. The place for payloads belongs to the outbox, like the table of gruelbox
     return new GruelboxPhaseTwoOutbox(
         transactionOutbox, dataSource, TABLE, configuration
             .vanillaBpGruelboxPhaseTwoPayloadStore(dataSource, new VanillaBpConfigurationProperties()));
@@ -126,8 +124,8 @@ public class GruelboxDeduplicationWindowTest {
   }
 
   /**
-   * Schedules the call in a transaction of its own - the store has to be called within
-   * one, and the answer is what the contract is about.
+   * Schedules the call in a transaction of its own. The store must be called inside one, and the
+   * answer is what the contract is about.
    */
   private static boolean scheduled(
       final TransactionTemplate transactions,
@@ -139,8 +137,8 @@ public class GruelboxDeduplicationWindowTest {
   }
 
   /**
-   * Writes an entry the way gruelbox leaves one behind, so what the store makes of it
-   * does not depend on gruelbox' own thread having run.
+   * Writes an entry the way gruelbox leaves one behind. So what the store makes of it does not
+   * depend on whether the thread of gruelbox has run.
    *
    * @param processed Whether the entry counts as dispatched
    */
@@ -185,12 +183,13 @@ public class GruelboxDeduplicationWindowTest {
     final var transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
     final var call = correlation("4711", "partner-42");
 
-    // gruelbox dispatched this operation and keeps its row until the retention passes,
-    // which is what the store has to see through
+    // gruelbox dispatched this operation, and it keeps the row until the retention
+    // passes. The store has to see through that
     writeEntry(dataSource, call.idempotencyKey().orElseThrow(), true);
 
-    // the second round of a loop asking partner 42 again: planned, and the retained
-    // entry is gone, gruelbox' table having no column to move its key into
+    // the second round of a loop which asks partner 42 again: it is planned, and the
+    // retained entry is gone, because the gruelbox table has no column to move its key
+    // into
     assertTrue(scheduled(transactions, testee, call));
     assertEquals(0, count(dataSource, "processed = TRUE"), "the released entry is gone");
     assertEquals(1, count(dataSource, "processed = FALSE"), "the new operation waits for its dispatch");
@@ -222,8 +221,8 @@ public class GruelboxDeduplicationWindowTest {
     final var transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
 
     // gruelbox refuses a unique request ID longer than 250 characters before any
-    // database sees it, so an aggregate ID a domain model legitimately uses - a
-    // composite business key, a URN - used to fail the application's own transaction
+    // database sees it. So an aggregate ID which a domain model may well use, like a
+    // composite business key or a URN, used to fail the transaction of the application
     final var aggregateId = "urn:offer:"
         + "x".repeat(400);
 

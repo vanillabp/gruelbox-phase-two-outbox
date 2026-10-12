@@ -35,15 +35,15 @@ import io.vanillabp.integration.spi.PhaseTwoCall;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 
 /**
- * What the housekeeping of the gruelbox store removes and what it leaves: the retention
- * counts at the entry, so an entry gruelbox blocked keeps its payload however long the
- * repair takes, an entry which was dispatched takes its payload with it when gruelbox
- * deletes it, and a payload no entry names is removed by age.
+ * Holds what the housekeeping of the gruelbox store removes and what it leaves. The retention
+ * counts at the entry. So an entry gruelbox blocked keeps its payload, however long the repair
+ * takes. An entry which was dispatched takes its payload with it when gruelbox deletes it. And a
+ * payload which no entry names is removed by age.
  * <p>
- * The rows are put into the shape they have after the retention passed rather than
- * waited for: gruelbox writes its own timestamps, and a test which waited for seven days
- * of them would never end. Nothing is dispatched while the test runs, because the one
- * entry left waiting is blocked.
+ * The test does not wait until the retention has passed. It puts the rows into the shape they
+ * have then. Gruelbox writes its own timestamps, and a test which waited seven days for them would
+ * never end. Nothing is dispatched while the test runs, because the one entry left waiting is
+ * blocked.
  */
 @ExtendWith(SuppressOutputExtension.class)
 @SuppressOutputExtension.SuppressBackgroundOutput
@@ -57,8 +57,8 @@ public class GruelboxKeepsThePayloadOfABlockedEntryTest {
       .build();
 
   /**
-   * Older than the default retention of seven days, so everything written here is old
-   * enough to be removed - which makes the entries the only reason a payload stays.
+   * Older than the default retention of seven days. So everything written here is old enough to
+   * be removed, and the entries are the only reason why a payload stays.
    */
   private static final Instant LONG_BEFORE_THE_RETENTION = Instant.now().minus(Duration.ofDays(10));
 
@@ -91,8 +91,8 @@ public class GruelboxKeepsThePayloadOfABlockedEntryTest {
         "jdbc:h2:mem:%s;DB_CLOSE_DELAY=-1".formatted(UUID.randomUUID()), "sa", "", true);
     dataSource.setDriverClassName("org.h2.Driver");
     context = new AnnotationConfigApplicationContext();
-    // gruelbox resolves the invocation through the context; nothing is dispatched here,
-    // and a bean which does nothing is what says so
+    // gruelbox finds the invocation through the context. Nothing is dispatched here, so
+    // the bean does nothing
     context
         .registerBean(
             GruelboxPhaseTwoDispatch.class,
@@ -103,7 +103,6 @@ public class GruelboxKeepsThePayloadOfABlockedEntryTest {
                 workflowAggregateId,
                 adapterId,
                 serializedArgs) -> {
-              // nothing is dispatched in this test
             });
     context.refresh();
     final var properties = new VanillaBpConfigurationProperties();
@@ -111,7 +110,7 @@ public class GruelboxKeepsThePayloadOfABlockedEntryTest {
         .getOutbox()
         .setPollInterval(Duration.ofHours(1));
     // the default housekeeping window is an hour of the night, and this test wants to
-    // watch the sweep work now
+    // see the cleanup work now
     properties
         .getOutbox()
         .getHousekeeping()
@@ -133,8 +132,8 @@ public class GruelboxKeepsThePayloadOfABlockedEntryTest {
             submitter);
     payloadStore = configuration.vanillaBpGruelboxPhaseTwoPayloadStore(dataSource, properties);
     outbox = new GruelboxPhaseTwoOutbox(transactionOutbox, dataSource, TABLE, payloadStore);
-    // building the dispatcher closes the submitter's gate, so an entry scheduled below
-    // waits for the flush this test starts instead of going out at the commit
+    // building the dispatcher closes the gate of the submitter. So an entry scheduled
+    // below waits for the flush this test starts, and does not go out at the commit
     dispatcher = new GruelboxPhaseTwoOutboxDispatcher(
         transactionOutbox, properties.getOutbox(), submitter, outbox, payloadStore, configuration
             .vanillaBpGruelboxHousekeepingLease(dataSource, properties), () -> VanillaBpMetrics.NONE);
@@ -203,7 +202,7 @@ public class GruelboxKeepsThePayloadOfABlockedEntryTest {
     final var orphan = callWith("written by a transaction which never committed");
     transactions.executeWithoutResult(status -> payloadStore.write(orphan));
 
-    // the shape the store has after the retention passed: one entry gruelbox blocked,
+    // the shape of the store after the retention passed: one entry gruelbox blocked,
     // one it dispatched long enough ago to be deleted at the next flush, and three
     // payloads older than the retention
     update(

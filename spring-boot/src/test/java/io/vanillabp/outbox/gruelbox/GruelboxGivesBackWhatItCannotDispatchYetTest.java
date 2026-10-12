@@ -20,15 +20,13 @@ import io.vanillabp.integration.spi.PhaseTwoRetryLater;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 
 /**
- * What this store does with a workflow its BPMS has not made searchable yet: it gives the
- * entry back, after one attempt, without sleeping.
+ * Holds what this store does with a workflow which its BPMS has not made searchable yet. It gives
+ * the entry back after one attempt, and it does not wait.
  * <p>
- * Sleeping here and asking again is what it used to do, and the transaction is why it
- * cannot: gruelbox opened one around this call, the rejected attempt marked it
- * rollback-only, and a second attempt inside it reached the BPMS and then lost its commit.
- * The whole reason for holding the entry has moved to
- * {@link GruelboxPhaseTwoFailureListener}, which writes the window the adapter named onto
- * the row.
+ * It used to wait here and ask again. The transaction is the reason why it cannot. Gruelbox opened
+ * a transaction around this call. The rejected attempt marked it rollback-only. A second attempt
+ * inside it reached the BPMS and then lost its commit. Holding the entry back is now the job of
+ * {@link GruelboxPhaseTwoFailureListener}, which writes the window the adapter named onto the row.
  */
 @ExtendWith(SuppressOutputExtension.class)
 public class GruelboxGivesBackWhatItCannotDispatchYetTest {
@@ -60,10 +58,10 @@ public class GruelboxGivesBackWhatItCannotDispatchYetTest {
         () -> new GruelboxPhaseTwoDispatchBean(router)
             .dispatch("CORRELATE_MESSAGE", "loan-approval", "loan_approval", "4711", null, ARGS));
 
-    // waiting here would mean dispatching again, so one attempt is what says that the
-    // thread gave the entry back. How long the call took would not: a machine carrying
-    // several builds stops this JVM for seconds at a time, and a wall clock cannot tell
-    // that apart from a thread which waited
+    // waiting here would mean dispatching again. So one attempt shows that the thread
+    // gave the entry back. The time the call took would not show it. A machine which
+    // runs several builds stops this JVM for seconds at a time, and a wall clock cannot
+    // tell that from a thread which waited
     assertEquals(1, attempts.get(), "the entry goes back instead of being attempted again in here");
     assertSame(rejection, thrown, "the window the adapter named has to reach the store unchanged");
 
