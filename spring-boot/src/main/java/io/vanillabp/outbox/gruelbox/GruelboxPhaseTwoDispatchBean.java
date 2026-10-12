@@ -29,7 +29,7 @@ import io.vanillabp.integration.spi.PhaseTwoRetryLater;
  * The entry came again afterwards, so the consumer got the same report twice. And gruelbox logged
  * what it saw (<code>Failed to update attempt count</code>): the update which rolled back had
  * already counted up the row it wanted to write. See
- * <code>ARejectedDispatchIsPlannedAgainTest</code>.
+ * <code>ARejectedDispatchOnGruelboxIsPlannedAgainTest</code> of this repository.
  * <p>
  * Instead, the entry costs one due time. Gruelbox has one distance for the whole outbox. So
  * {@link GruelboxPhaseTwoFailureListener} writes the window the adapter named onto the row, once

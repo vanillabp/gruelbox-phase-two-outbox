@@ -54,10 +54,11 @@ import lombok.extern.slf4j.Slf4j;
  * a database transaction which is held for the whole dispatch, and so is a connection. That is the
  * design of gruelbox, not a choice of this dispatcher.
  * <p>
- * It also means that gruelbox counts an attempt when it takes an entry, not when the attempt
- * ended. Nobody else can take that entry meanwhile, so the two numbers are the same here. An entry
- * only looks attempted while it is still on its way. The table belongs to gruelbox, so this is
- * written down and not changed.
+ * It also decides what the row says about an attempt. A flush which takes an entry stamps the time
+ * of the last attempt and moves the due time on by <code>attempt-frequency</code>, before the
+ * dispatch runs. So an entry taken by a flush looks attempted while it is still on its way. The
+ * count of attempts goes up only when a dispatch failed. The table belongs to gruelbox, so this
+ * is written down and not changed.
  * <p>
  * A dispatch which knows that a repetition will help soon says so
  * ({@link io.vanillabp.integration.spi.PhaseTwoRetryLater}, for a workflow which its BPMS has not

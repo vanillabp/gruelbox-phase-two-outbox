@@ -19,13 +19,12 @@ import lombok.extern.slf4j.Slf4j;
  * {@link GruelboxPhaseTwoOutboxAutoConfiguration} reads it on the same thread, for the START
  * re-dispatch mitigation of the core.
  * <p>
- * Known limitation (accepted): gruelbox increments the attempts count only when
- * an attempt FAILS - after a hard crash between a successful BPMS call and
- * committing the processed flag, the recovered entry still carries
- * <code>attempts == 0</code> and is re-dispatched without the mitigation probe
- * (the documented at-least-once residual). Failure-retries - including the
- * classic &quot;BPMS call succeeded but recording the completion failed&quot; -
- * are detected, also across restarts (the count is persisted).
+ * Gruelbox counts an attempt only when it FAILED. That count alone would miss a crash between a
+ * successful BPMS call and the commit which ticks the entry off. So the time of the last attempt
+ * is read as well. A flush stamps it on every entry it picks up, before the dispatch runs, and only
+ * a flush brings back an entry after a crash. So such an entry counts as attempted, too. A failed
+ * attempt is seen either way, also across restarts, because both values are stored in the row.
+ * Only an entry which gruelbox submits right after its own commit counts as new.
  * <p>
  * <strong>It is also the gate which holds entries back until VanillaBP dispatches
  * them.</strong> Gruelbox submits an entry as soon as the scheduling transaction commits. But

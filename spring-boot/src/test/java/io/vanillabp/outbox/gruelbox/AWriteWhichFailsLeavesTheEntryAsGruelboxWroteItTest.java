@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.gruelbox.transactionoutbox.Invocation;
 import com.gruelbox.transactionoutbox.Persistor;
@@ -48,7 +49,8 @@ import io.vanillabp.integration.test.utils.SuppressOutputExtension;
  * Nothing is scheduled: the write is the subject, so the persistor is the double which refuses
  * it and the entry is the one gruelbox would hand over. The transaction manager is the real
  * one over an in-memory database, because what a refused write does to the transaction around
- * it is part of the case.
+ * it is part of the case. The write has to end the transaction it opened, and it must not leave
+ * one open on the thread of gruelbox. Each test checks that.
  */
 @ExtendWith(SuppressOutputExtension.class)
 public class AWriteWhichFailsLeavesTheEntryAsGruelboxWroteItTest {
@@ -139,6 +141,7 @@ public class AWriteWhichFailsLeavesTheEntryAsGruelboxWroteItTest {
         entry.getNextAttemptTime(),
         "the row was not changed, so the object must not claim a moment of its own");
     assertFalse(entry.isBlocked(), "a rejection is not a reason to block anything");
+    assertNoTransactionIsLeftOpen();
 
   }
 
@@ -157,6 +160,23 @@ public class AWriteWhichFailsLeavesTheEntryAsGruelboxWroteItTest {
     assertTrue(
         entry.getAttempts() < ATTEMPT_BUDGET,
         "what ends such an entry is the budget, which is the only thing left once blocking failed");
+    assertNoTransactionIsLeftOpen();
+
+  }
+
+  /**
+   * The refused write ended the transaction it opened. Nothing is bound to the thread any more,
+   * neither a transaction nor its connection. The thread belongs to gruelbox, and the next entry
+   * it dispatches would otherwise join a transaction which is marked for rollback.
+   */
+  private static void assertNoTransactionIsLeftOpen() {
+
+    assertFalse(
+        TransactionSynchronizationManager.isActualTransactionActive(),
+        "the refused write left its transaction open on the thread");
+    assertTrue(
+        TransactionSynchronizationManager.getResourceMap().isEmpty(),
+        "the refused write left its connection bound to the thread");
 
   }
 
