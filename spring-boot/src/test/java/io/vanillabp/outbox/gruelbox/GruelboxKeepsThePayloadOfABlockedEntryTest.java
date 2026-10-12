@@ -2,7 +2,6 @@ package io.vanillabp.outbox.gruelbox;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
@@ -12,6 +11,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,6 +44,11 @@ import io.vanillabp.integration.test.utils.SuppressOutputExtension;
  * have then. Gruelbox writes its own timestamps, and a test which waited seven days for them would
  * never end. Nothing is dispatched while the test runs, because the one entry left waiting is
  * blocked.
+ * <p>
+ * Two threads do the cleanup, in no fixed order. The flush of gruelbox deletes the dispatched
+ * entry. The housekeeping of VanillaBP removes the payloads which no entry names any more. So a
+ * sweep which runs before that flush still sees the payload of the dispatched entry, and the next
+ * sweep removes it. The test waits for each result on its own, not for one of the two threads.
  */
 @ExtendWith(SuppressOutputExtension.class)
 @SuppressOutputExtension.SuppressBackgroundOutput
@@ -63,11 +68,17 @@ public class GruelboxKeepsThePayloadOfABlockedEntryTest {
   private static final Instant LONG_BEFORE_THE_RETENTION = Instant.now().minus(Duration.ofDays(10));
 
   /**
-   * How long the test waits for the flush which cleans up. The first flush runs when the
-   * poller starts, so this is a guard against a machine which leaves the JVM without a
-   * turn, not a measurement of speed.
+   * How long the test waits for the cleanup. The first flush and the first sweep run when the
+   * poller starts. So this is a guard against a machine which leaves the JVM without a turn, not
+   * a measurement of speed.
    */
   private static final long UNTIL_THE_HOUSEKEEPING_RAN = 30_000;
+
+  /**
+   * How often the housekeeping comes back while its window is open. It is short, because a
+   * sweep which ran before the flush of gruelbox leaves one payload for the next sweep.
+   */
+  private static final Duration BETWEEN_TWO_SWEEPS = Duration.ofMillis(100);
 
   private SingleConnectionDataSource dataSource;
 
@@ -108,7 +119,7 @@ public class GruelboxKeepsThePayloadOfABlockedEntryTest {
     final var properties = new VanillaBpConfigurationProperties();
     properties
         .getOutbox()
-        .setPollInterval(Duration.ofHours(1));
+        .setPollInterval(BETWEEN_TWO_SWEEPS);
     // the default housekeeping window is an hour of the night, and this test wants to
     // see the cleanup work now
     properties
@@ -193,6 +204,22 @@ public class GruelboxKeepsThePayloadOfABlockedEntryTest {
 
   }
 
+  /**
+   * Waits until the cleanup reached that state, but not longer than
+   * {@link #UNTIL_THE_HOUSEKEEPING_RAN}.
+   */
+  private static void awaitUntil(
+      final Callable<Boolean> reached,
+      final String otherwise) throws Exception {
+
+    final var deadline = System.currentTimeMillis() + UNTIL_THE_HOUSEKEEPING_RAN;
+    while (!reached.call()) {
+      assertTrue(System.currentTimeMillis() < deadline, otherwise);
+      Thread.sleep(50);
+    }
+
+  }
+
   @Test
   @DisplayName("A blocked entry keeps its payload, a dispatched entry takes its own with it, an orphan goes")
   public void theRetentionCountsAtTheEntry() throws Exception {
@@ -222,22 +249,20 @@ public class GruelboxKeepsThePayloadOfABlockedEntryTest {
     }
 
     dispatcher.startPolling();
-    // the payload sweep is the last thing a flush does, so a gone orphan says that the
-    // whole housekeeping ran
-    final var deadline = System.currentTimeMillis() + UNTIL_THE_HOUSEKEEPING_RAN;
-    while (payloadStore.read(orphan.payloadReference()) != null) {
-      assertTrue(System.currentTimeMillis() < deadline, "the housekeeping did not remove the orphaned payload");
-      Thread.sleep(50);
-    }
+    awaitUntil(() -> countEntries("processed = TRUE") == 0, "a dispatched entry goes when its retention ran out");
+    awaitUntil(
+        () -> payloadStore.read(orphan.payloadReference()) == null,
+        "the housekeeping did not remove the orphaned payload");
+    awaitUntil(
+        () -> payloadStore.read(dispatched.payloadReference()) == null,
+        "the dispatched entry did not take its payload with it");
 
+    // every sweep so far has seen the blocked entry
     assertEquals(1, countEntries("blocked = TRUE"), "a blocked entry waits for a person and no retention removes it");
     assertArrayEquals(
         "the state an operator will send once the cause is gone".getBytes(StandardCharsets.UTF_8),
         payloadStore.read(blocked.payloadReference()),
         "the entry is still there, so its payload has to be there as well");
-
-    assertEquals(0, countEntries("processed = TRUE"), "a dispatched entry goes when its retention ran out");
-    assertNull(payloadStore.read(dispatched.payloadReference()), "the entry took its payload with it");
 
   }
 

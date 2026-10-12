@@ -172,9 +172,11 @@ public class ARejectedDispatchOnGruelboxIsPlannedAgainTest {
   }
 
   /**
-   * Whether gruelbox wrote down an attempt on the entry of that operation. It stamps the time of
-   * the last attempt when the attempt ENDED. The count of attempts says nothing here, because the
-   * answer "not yet" is taken back from it.
+   * Whether gruelbox wrote down an attempt on the entry of that operation. Gruelbox stamps the time
+   * of the last attempt when an attempt failed, and also when a flush takes the entry. The entries
+   * of this test are submitted right after their commit, not by a flush. So the stamp says that
+   * the rejected attempt ended. The count of attempts says nothing here, because the answer "not
+   * yet" is taken back from it.
    */
   private boolean wasAttempted(
       final String idempotencyKey) throws SQLException {

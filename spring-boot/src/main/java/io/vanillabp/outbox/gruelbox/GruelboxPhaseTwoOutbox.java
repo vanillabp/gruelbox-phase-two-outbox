@@ -41,8 +41,10 @@ import lombok.extern.slf4j.Slf4j;
  * it is needed. Before it schedules, the store reads the row of that unique request ID and looks
  * at the <code>processed</code> flag of gruelbox. A processed row is DELETED. It has done its
  * work, and its trail ends there. That is the price of gruelbox owning the table. Then the new
- * operation is scheduled. A row which is not processed yet means that an identical operation is
- * still planned, and the schedule is discarded. Both happen in the transaction of the caller, on
+ * operation is scheduled. A BLOCKED row stays for whoever repairs it. It only loses its unique
+ * request ID, and then the new operation is scheduled as well. Any other row which is not
+ * processed yet means that an identical operation is still planned, and the schedule is
+ * discarded. All of this happens in the transaction of the caller, on
  * the connection which {@code DataSourceUtils} binds to it. So a rollback takes the release with
  * it.
  * <p>
