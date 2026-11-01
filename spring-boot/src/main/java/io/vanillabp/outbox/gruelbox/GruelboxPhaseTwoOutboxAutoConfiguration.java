@@ -85,8 +85,9 @@ import jakarta.persistence.EntityManagerFactory;
  * same listener writes the short due time of a workflow which is not searchable yet, because
  * gruelbox plans every failed attempt from the one distance it knows. It also takes back the
  * attempt gruelbox counted for such an answer. And it blocks the entry once
- * <code>vanillabp.outbox.wait-for-visibility-at-most</code> has passed. One thing this store
- * cannot do, while the stores of VanillaBP can: its retry policy knows ONE fixed distance, so
+ * <code>vanillabp.outbox.wait-for-visibility-at-most</code> has passed, or the deadline its
+ * adapter named. One thing this store cannot do, while the stores of VanillaBP can: its retry
+ * policy knows ONE fixed distance, so
  * <code>max-attempt-frequency</code> and the doubling it caps have no effect here. A blocked
  * entry gives its <code>uniqueRequestId</code> away as on the other stores. The store does it
  * when the same operation is planned again, not at the moment of the block. The

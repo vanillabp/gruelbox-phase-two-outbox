@@ -44,7 +44,7 @@ import io.vanillabp.integration.test.utils.SuppressOutputExtension;
  * yet is no failure of the entry. So its answer "not yet" must not use up the attempts of
  * <code>vanillabp.outbox.block-after-attempts</code>. Such a wait is ended by
  * <code>vanillabp.outbox.wait-for-visibility-at-most</code>, counted from the moment the entry
- * was written. This test reads the row back to show both halves on this store, where gruelbox
+ * was written, or by the deadline the adapter named. This test reads the row back to show both halves on this store, where gruelbox
  * counts the attempt before the listener is called.
  * <p>
  * Each entry is saved the way gruelbox holds it right after it committed a failed attempt, and
@@ -298,6 +298,64 @@ public class WaitingForTheBpmsUsesTimeNotAttemptsTest {
     assertTrue(reported.contains(WAITED_TOO_LONG), reported);
     assertTrue(reported.contains(GruelboxPhaseTwoFailureListener.BLOCKED_ENTRIES_GUIDE), reported);
     assertTrue(reported.contains("taxiride"), reported);
+    assertTrue(reported.contains(entry.getId()), reported);
+
+  }
+
+  /**
+   * An adapter may know how long its wait may last, for example a message time-to-live. Its
+   * deadline replaces <code>vanillabp.outbox.wait-for-visibility-at-most</code>. So an entry which
+   * is older than the key allows still waits while the deadline lies ahead.
+   */
+  @Test
+  @DisplayName("A deadline the adapter names replaces wait-for-visibility-at-most, so a longer wait goes on")
+  public void aDeadlineLaterThanTheLimitKeepsTheEntryWaiting() throws Exception {
+
+    final var entry = anEntryWhoseAttemptFailed(writtenAgo(WAIT_AT_MOST.plusMinutes(1)), 1);
+    final var deadline = Instant.now().plus(Duration.ofHours(1));
+
+    final var beforeTheWrite = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+    listener().failure(entry, new PhaseTwoRetryLater("no subscription yet", WINDOW, deadline));
+
+    final var row = rowOf(entry.getId());
+    assertFalse(row.blocked(), "the deadline lies ahead, so the key alone must not end the wait");
+    assertEquals(0, row.attempts(), "the answer 'not yet' uses no attempt, with a deadline as without one");
+    assertFalse(row.dueAt().isBefore(beforeTheWrite.plus(WINDOW)), "due before the window: "
+        + row.dueAt());
+    assertTrue(errors().isEmpty(), errors().toString());
+    assertTrue(blocks.isEmpty(), blocks.toString());
+    assertTrue(
+        logWatcher.list
+            .stream()
+            .map(ILoggingEvent::getFormattedMessage)
+            .anyMatch(message -> message.contains("it waits until %s at most".formatted(deadline))),
+        "the INFO line names the deadline as the end of the wait");
+
+  }
+
+  /**
+   * A deadline which has passed ends the wait, even where the key would let the entry wait
+   * longer. The ERROR names the deadline, because the key did not end the wait.
+   */
+  @Test
+  @DisplayName("A deadline which has passed blocks the entry, although wait-for-visibility-at-most has not")
+  public void aDeadlineWhichPassedBlocksTheEntry() throws Exception {
+
+    final var entry = anEntryWhoseAttemptFailed(writtenAgo(Duration.ofSeconds(1)), 1);
+    final var deadline = Instant.now().minus(Duration.ofSeconds(1));
+
+    listener().failure(entry, new PhaseTwoRetryLater("no subscription yet", WINDOW, deadline));
+
+    final var row = rowOf(entry.getId());
+    assertTrue(row.blocked(), "the first answer after the deadline blocks the entry");
+    assertEquals(1, row.attempts(), "the block keeps the attempt gruelbox counted, as every block does");
+    assertEquals(List.of("GruelboxPhaseTwoOutbox/CORRELATE_MESSAGE/false"), blocks);
+    assertEquals(1, errors().size(), errors().toString());
+    final var reported = errors().getFirst();
+    assertTrue(reported.contains("passed the deadline %s its adapter named".formatted(deadline)), reported);
+    assertFalse(reported.contains(WAITED_TOO_LONG), "the key did not end this wait: "
+        + reported);
+    assertTrue(reported.contains(GruelboxPhaseTwoFailureListener.BLOCKED_ENTRIES_GUIDE), reported);
     assertTrue(reported.contains(entry.getId()), reported);
 
   }
