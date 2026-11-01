@@ -125,6 +125,15 @@ The moment in the session could also give this store the age of its oldest waiti
 says this store cannot report that age. It does not do so yet. To read it, every waiting invocation
 would have to be deserialized. That is the cost decision 2 turns down for the adapter ids at a start.
 
+**Addendum (story 2061): a deadline the adapter names ends the wait.** Decision 4 stays as it is.
+`PhaseTwoRetryLater` may carry a deadline, for example a message time-to-live. Where it does, the
+deadline replaces `vanillabp.outbox.wait-for-visibility-at-most` for that entry. The rule is now
+`PhaseTwoOutboxProperties#hasWaitedLongEnough`, which takes the deadline. The platform's own stores
+ask the same method, so a time-to-live means the same on every store. Without this, the default of
+about four hours cut a longer time-to-live short, and the ERROR named the wrong setting. The ERROR
+now names the deadline. An entry which knows no moment of writing keeps the old rule, even with a
+deadline. The attempt budget ends its wait.
+
 ### 5. A blocked entry gives its key away when the same operation is planned again
 
 *Supersedes the last bullet of decision 2 ("A blocked entry holds its key").*

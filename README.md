@@ -115,6 +115,11 @@ yet" blocks the entry. An ERROR reports it and names that key. If the key is not
 time which the attempts of `vanillabp.outbox.block-after-attempts` take, with the growing backoff of
 the stores VanillaBP writes itself. With the defaults that is 3 hours and 52.5 minutes.
 
+An adapter may name a deadline together with its window. One example is a message time-to-live on
+the Camunda 7 family. The deadline then replaces `vanillabp.outbox.wait-for-visibility-at-most` for
+that entry. A longer time-to-live is not cut short, and a shorter one is not stretched. The first "not
+yet" after the deadline blocks the entry, and the ERROR names the deadline instead of the key.
+
 gruelbox counts every failed attempt itself. VanillaBP's listener on the outbox takes the attempt back
 in the same write which sets the window. gruelbox also has no column for the moment an entry was
 written. So the listener stores that moment in the session which gruelbox keeps with every call. Two
@@ -129,7 +134,8 @@ An entry is blocked in three cases:
 - The adapter or an extension said that trying again cannot help (`PhaseTwoPermanentFailure`), and the
   entry had its one attempt.
 - `vanillabp.outbox.block-after-attempts` attempts failed.
-- The entry waited longer than `vanillabp.outbox.wait-for-visibility-at-most` for its BPMS.
+- The entry waited longer than `vanillabp.outbox.wait-for-visibility-at-most` for its BPMS, or past
+  the deadline its adapter named.
 
 Nothing dispatches a blocked entry again, and nothing deletes it. It waits for a person. The ERROR which
 reports it names the workflow and the entry id, and it links to this section.

@@ -37,7 +37,7 @@ import io.vanillabp.integration.spi.PhaseTwoRetryLater;
  * back the attempt gruelbox counted, because waiting for a BPMS is no failure of the entry. A
  * workflow which never becomes visible is ended by
  * <code>vanillabp.outbox.wait-for-visibility-at-most</code>, counted from the moment the entry was
- * written.
+ * written. A deadline the adapter named replaces that key for the entry.
  * <p>
  * This class does NOT ask the BPMS again on the spot. The attempt is not alone in its
  * transaction. A second try inside it would either repeat work the first one had already written,

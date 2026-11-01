@@ -57,8 +57,10 @@ import lombok.extern.slf4j.Slf4j;
  * window. Time ends a wait which would never end. Once
  * <code>vanillabp.outbox.wait-for-visibility-at-most</code> has passed since the entry was
  * written, the next answer "not yet" blocks the entry. That block keeps the one attempt gruelbox
- * counted. {@link PhaseTwoOutboxProperties#hasWaitedForVisibilityLongEnough} is the rule, the same
- * one the stores VanillaBP writes itself ask. See decision 4 in the repository's DECISIONS.md.
+ * counted. The adapter may name a deadline with its answer, for example a message time-to-live.
+ * Then the deadline ends the wait instead of that key.
+ * {@link PhaseTwoOutboxProperties#hasWaitedLongEnough} is the rule, the same one the stores
+ * VanillaBP writes itself ask. See decision 4 in the repository's DECISIONS.md.
  * <p>
  * Gruelbox has no column for the moment an entry was written. So this listener puts that moment
  * into the session of the stored invocation when the entry is written ({@link #extractSession()}).
@@ -213,7 +215,8 @@ public class GruelboxPhaseTwoFailureListener implements TransactionOutboxListene
   /**
    * Handles the answer "not yet" for an entry which knows when it was written. Either the entry is
    * due again after the window the adapter named, and the attempt gruelbox counted is taken back.
-   * Or it is blocked, because it has waited long enough.
+   * Or it is blocked, because it has waited long enough. A deadline the adapter named says how
+   * long that is. Without one, <code>vanillabp.outbox.wait-for-visibility-at-most</code> does.
    *
    * @param entry The entry whose attempt was answered with "not yet"
    * @param cause What the dispatch was rejected with
@@ -227,16 +230,23 @@ public class GruelboxPhaseTwoFailureListener implements TransactionOutboxListene
       final Instant writtenAt) {
 
     final var now = Instant.now();
-    if (properties.hasWaitedForVisibilityLongEnough(writtenAt, now)) {
+    // the adapter knows how long its wait may last, for example a message time-to-live. So
+    // its deadline replaces wait-for-visibility-at-most for this entry, as on the other stores
+    final var deadline = PhaseTwoRetryLater.deadline(cause);
+    if (properties.hasWaitedLongEnough(writtenAt, deadline, now)) {
       // the block keeps the attempt gruelbox counted, like every other block. If gruelbox
       // blocked the entry itself, the row says so already
+      final var whatEndedTheWait = deadline == null
+          ? "it waited longer than '%s' for its BPMS"
+              .formatted(PhaseTwoOutboxProperties.WAIT_FOR_VISIBILITY_AT_MOST_PROPERTY)
+          : "it passed the deadline %s its adapter named".formatted(deadline);
       if (!entry.isBlocked() && !blockNow(
           entry,
-          "it waited longer than '%s' for its BPMS - the next answer \"not yet\" tries again"
-              .formatted(PhaseTwoOutboxProperties.WAIT_FOR_VISIBILITY_AT_MOST_PROPERTY))) {
+          whatEndedTheWait
+              + " - the next answer \"not yet\" tries again")) {
         return;
       }
-      reportWaitedTooLong(entry, cause, Duration.between(writtenAt, now));
+      reportWaitedTooLong(entry, cause, Duration.between(writtenAt, now), deadline);
       return;
     }
 
@@ -279,7 +289,7 @@ public class GruelboxPhaseTwoFailureListener implements TransactionOutboxListene
         call[3],
         entry.getId(),
         retryAfter,
-        writtenAt.plus(properties.waitForVisibilityAtMost()),
+        properties.waitEndsAt(writtenAt, deadline),
         cause.getMessage());
 
   }
@@ -434,14 +444,35 @@ public class GruelboxPhaseTwoFailureListener implements TransactionOutboxListene
    * @param entry The blocked entry
    * @param cause The last answer "not yet"
    * @param waited How long the entry waited since it was written
+   * @param deadline The deadline the adapter named, or <code>null</code> where
+   *          <code>vanillabp.outbox.wait-for-visibility-at-most</code> ended the wait
    */
   private void reportWaitedTooLong(
       final TransactionOutboxEntry entry,
       final Throwable cause,
-      final Duration waited) {
+      final Duration waited,
+      final Instant deadline) {
 
     final var call = argumentsOf(entry);
     count(call, false);
+    if (deadline != null) {
+      // the setting did not end this wait, so the line names what did
+      log.error(
+          "Phase two ({}) of BPMN process '{}' of workflow module '{}' for aggregate '{}' waited {} "
+              + "and passed the deadline {} its adapter named - the outbox entry '{}' is now blocked. "
+              + "How to find it, open it again or delete it: "
+              + BLOCKED_ENTRIES_GUIDE
+              + " - the last answer was: {}",
+          call[0],
+          call[2],
+          call[1],
+          call[3],
+          waited,
+          deadline,
+          entry.getId(),
+          cause.getMessage());
+      return;
+    }
     log.error(
         "Phase two ({}) of BPMN process '{}' of workflow module '{}' for aggregate '{}' waited {} "
             + "for its BPMS to report the workflow, which is longer than '{}' allows - the outbox "
