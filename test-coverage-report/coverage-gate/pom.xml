@@ -50,6 +50,22 @@
           <skipIfEmpty>true</skipIfEmpty>
         </configuration>
       </plugin>
+      <!-- the sources jar, although this module publishes nothing. Without a file of its
+           own, central-publishing-maven-plugin stops the whole publish, also for a module it
+           leaves out. This module builds no jar, and the root POM binds maven-source-plugin
+           no longer, so the sources jar is the one file it has -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
