@@ -29,6 +29,15 @@ name: Nightly against the platform snapshot
   workflow_dispatch:
 permissions:
   contents: read
+# Where Maven reads the snapshots of the other VanillaBP repositories from, see
+# .github/maven/settings.xml: from GitHub Packages once the organization sets the Actions
+# variable VANILLABP_SNAPSHOTS_FROM to 'github-packages', else from the snapshot repository of
+# Maven Central. Reading GitHub Packages needs a token even for public packages. The
+# GITHUB_TOKEN of the run is enough, because every job which runs Maven asks for
+# 'packages: read'.
+env:
+  VBP_SNAPSHOTS_FROM: "${{ vars.VANILLABP_SNAPSHOTS_FROM == 'github-packages' && 'github-packages' || 'central' }}"
+  VBP_PACKAGES_READ_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
 concurrency:
   # a dispatch while the night's run is still going must not build the same thing twice,
   # and the run already going is the one to keep: it is the one the issue workflow waits for
@@ -39,6 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
@@ -56,7 +66,7 @@ jobs:
       # workflow: without it Maven keeps yesterday's platform jar out of the cache above and
       # the night proves nothing.
       - name: Build and test against the published platform snapshot
-        run: mvn --batch-mode --no-transfer-progress --update-snapshots install
+        run: mvn -s .github/maven/settings.xml --batch-mode --no-transfer-progress --update-snapshots install
         env:
           CI: false
       # A red night has to say what it was built against, otherwise the reader cannot tell a
@@ -76,13 +86,19 @@ jobs:
           # from the repository 'central-snapshots', which io.vanillabp:release-parent
           # names, so this reads what came from the platform and skips what this build
           # installed itself, which carries no such file.
+          # Once VBP_SNAPSHOTS_FROM is 'github-packages', they come from the repository
+          # 'vanillabp-github-packages' of .github/maven/settings.xml instead.
+          snapshot_repository=central-snapshots
+          if [ "${VBP_SNAPSHOTS_FROM:-central}" = github-packages ]; then
+            snapshot_repository=vanillabp-github-packages
+          fi
           mapfile -t metadata < <(find "$snapshots" \
-            -path '*-SNAPSHOT/maven-metadata-central-snapshots.xml' -newer "$marker" \
+            -path "*-SNAPSHOT/maven-metadata-${snapshot_repository}.xml" -newer "$marker" \
             2>/dev/null | sort)
           stale=""
           if [ "${#metadata[@]}" -eq 0 ]; then
             mapfile -t metadata < <(find "$snapshots" \
-              -path '*-SNAPSHOT/maven-metadata-central-snapshots.xml' 2>/dev/null | sort)
+              -path "*-SNAPSHOT/maven-metadata-${snapshot_repository}.xml" 2>/dev/null | sort)
             stale="Maven refreshed none of these while this run was going, so they are what
           the cache of the runner held and not necessarily what was built against."
           fi
