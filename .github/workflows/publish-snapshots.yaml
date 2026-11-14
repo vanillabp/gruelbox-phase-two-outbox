@@ -35,6 +35,13 @@ permissions:
 # 'packages: read'.
 env:
   VBP_SNAPSHOTS_FROM: "${{ vars.VANILLABP_SNAPSHOTS_FROM == 'github-packages' && 'github-packages' || 'central' }}"
+  # The settings file turns on its profile for GitHub Packages by VBP_SNAPSHOTS_FROM. Maven
+  # sees that, but a Quarkus test does not: it resolves the deployment artifacts of the
+  # extensions with a resolver of its own inside the test JVM, and that resolver takes the
+  # profiles from the Maven command line only. So every Maven call of this workflow also
+  # names the profile, by this variable. It is empty for 'central', which leaves the calls
+  # as they were.
+  VBP_SNAPSHOTS_PROFILE: "${{ vars.VANILLABP_SNAPSHOTS_FROM == 'github-packages' && '-Psnapshots-from-github-packages' || '' }}"
   VBP_PACKAGES_READ_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
 concurrency:
   # two pushes to main must not publish at the same time, and the later one has to
@@ -74,7 +81,7 @@ jobs:
       # reported twice - once per compilation.
       - name: Build and test
         if: "${{ github.event_name == 'pull_request' || vars.VANILLABP_PUBLISH != 'true' }}"
-        run: mvn -s .github/maven/settings.xml --batch-mode --no-transfer-progress --update-snapshots install
+        run: mvn -s .github/maven/settings.xml ${VBP_SNAPSHOTS_PROFILE} --batch-mode --no-transfer-progress --update-snapshots install
         env:
           CI: false
       # what a failing test printed is in these reports. Surefire prints its last line,
@@ -94,7 +101,7 @@ jobs:
       # repository and to the snapshot repository of Maven Central
       - name: Publish snapshot
         if: "${{ github.event_name == 'push' && vars.VANILLABP_PUBLISH == 'true' }}"
-        run: mvn -s .github/maven/settings.xml --batch-mode --no-transfer-progress --update-snapshots deploy -P publish-snapshots
+        run: mvn -s .github/maven/settings.xml ${VBP_SNAPSHOTS_PROFILE} --batch-mode --no-transfer-progress --update-snapshots deploy -P publish-snapshots
         env:
           MAVEN_USERNAME: "${{ secrets.MAVEN_CENTRAL_PORTAL_TOKEN_USER }}"
           MAVEN_PASSWORD: "${{ secrets.MAVEN_CENTRAL_PORTAL_TOKEN_PW }}"
