@@ -16,6 +16,7 @@ import com.gruelbox.transactionoutbox.TransactionOutboxListener;
 
 import io.vanillabp.integration.adapter.migration.config.PhaseTwoOutboxProperties;
 import io.vanillabp.integration.adapter.migration.observability.VanillaBpMetrics;
+import io.vanillabp.integration.spi.PhaseTwoBpmsBusy;
 import io.vanillabp.integration.spi.PhaseTwoPermanentFailure;
 import io.vanillabp.integration.spi.PhaseTwoRetryLater;
 import lombok.extern.slf4j.Slf4j;
@@ -75,6 +76,12 @@ import lombok.extern.slf4j.Slf4j;
  * called here. So it still writes its own ERROR line "Blocking failing entry", and it calls the
  * <code>blocked</code> method of the listeners after this one. The row says what is true: the
  * entry is open. This only happens when earlier failures used up all attempts but one.
+ * <p>
+ * A busy BPMS is handled the same way, with two differences
+ * ({@link io.vanillabp.integration.spi.PhaseTwoBpmsBusy}). The due time is
+ * <code>vanillabp.outbox.attempt-frequency</code>, spread a little, because the adapter names no
+ * window for an overloaded BPMS. And no time limit applies, because such a BPMS answers every time.
+ * Each refusal writes a WARN line, which is where the load becomes visible.
  * <p>
  * An entry which is not a phase-two dispatch is left alone. The outbox bean belongs to VanillaBP,
  * but an application may schedule work of its own on it. Blocking the entry of somebody else is
@@ -181,6 +188,14 @@ public class GruelboxPhaseTwoFailureListener implements TransactionOutboxListene
     }
 
     final var permanent = PhaseTwoPermanentFailure.isPermanent(cause);
+
+    // looked at before the attempt budget as well. An overloaded BPMS is no failure of the
+    // entry, however long it lasts
+    if (!permanent && PhaseTwoBpmsBusy.isBusy(cause)) {
+      waitForTheBusyBpms(entry, cause);
+      return;
+    }
+
     final var retryAfter = permanent ? null : PhaseTwoRetryLater.retryAfter(cause);
     final var writtenAt = writtenAtOf(entry);
 
@@ -291,6 +306,68 @@ public class GruelboxPhaseTwoFailureListener implements TransactionOutboxListene
         retryAfter,
         properties.waitEndsAt(writtenAt, deadline),
         cause.getMessage());
+
+  }
+
+  /**
+   * Handles the refusal of a busy BPMS. The entry is due again after
+   * <code>vanillabp.outbox.attempt-frequency</code>, spread a little
+   * ({@link PhaseTwoOutboxProperties#delayForABusyBpms()}), and the attempt gruelbox counted is
+   * taken back. No time limit applies, unlike for the answer "not yet": a busy BPMS answers every
+   * time, and the WARN line of each refusal shows how long it lasts. Gruelbox may have blocked
+   * the entry because the attempt it counted was the last one of the budget. Then the entry is
+   * opened again, as for the answer "not yet".
+   *
+   * @param entry The entry whose attempt the BPMS refused
+   * @param cause What the dispatch was refused with
+   */
+  private void waitForTheBusyBpms(
+      final TransactionOutboxEntry entry,
+      final Throwable cause) {
+
+    final var retryIn = properties.delayForABusyBpms();
+    final var gruelboxCounted = entry.getAttempts();
+    final var gruelboxBlocked = entry.isBlocked();
+    final var gruelboxWrote = entry.getNextAttemptTime();
+    // truncated the way gruelbox truncates its own distances. So the moment in the row
+    // and the moment in the entry are the same, whatever the database stores
+    final var dueAgainAt = Instant
+        .now()
+        .plus(retryIn)
+        .truncatedTo(ChronoUnit.MILLIS);
+    try {
+      entry.setAttempts(Math.max(0, gruelboxCounted - 1));
+      entry.setBlocked(false);
+      entry.setNextAttemptTime(dueAgainAt);
+      transactionManager.inTransactionThrows(transaction -> persistor.update(transaction, entry));
+    } catch (final Exception e) {
+      entry.setAttempts(gruelboxCounted);
+      entry.setBlocked(gruelboxBlocked);
+      entry.setNextAttemptTime(gruelboxWrote);
+      if (gruelboxBlocked) {
+        reportAttemptsUsedUp(entry, cause, false);
+        return;
+      }
+      log.debug(
+          "Could not write the due time for the outbox entry '{}' whose BPMS is busy - it is "
+              + "dispatched again after '{}' instead, and this attempt counts",
+          entry.getId(),
+          PhaseTwoOutboxProperties.ATTEMPT_FREQUENCY_PROPERTY,
+          e);
+      return;
+    }
+    final var call = argumentsOf(entry);
+    log.warn(
+        "Phase two ({}) of BPMN process '{}' of workflow module '{}' for aggregate '{}' met a busy "
+            + "BPMS - the outbox entry '{}' is dispatched again in {} and this uses none of its "
+            + "attempts: {}",
+        call[0],
+        call[2],
+        call[1],
+        call[3],
+        entry.getId(),
+        retryIn,
+        PhaseTwoBpmsBusy.messageOf(cause));
 
   }
 
