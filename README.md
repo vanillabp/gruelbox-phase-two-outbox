@@ -219,6 +219,12 @@ the doubling it limits, have no effect here. A window an adapter names is still 
 The adapter knows when its BPMS can answer. A store which is configured once for all workflows does not
 know that.
 
+A BPMS which refuses a dispatch because it is busy (the backpressure of Camunda 8) is the one case where
+this store uses no attempt for a failure. The row is due again after `vanillabp.outbox.attempt-frequency`,
+spread by a fifth in both directions, the attempt gruelbox counted is taken back, and each refusal writes
+one WARN line. No time limit applies, because a busy BPMS answers every time. The stores VanillaBP writes
+itself do the same.
+
 **No order between two operations of one workflow.** VanillaBP's own stores dispatch the operations of
 one aggregate in the order they were scheduled. Here an entry reaches a dispatch in two ways. gruelbox
 submits it as soon as the scheduling transaction commits, and a flush carries everything else which is

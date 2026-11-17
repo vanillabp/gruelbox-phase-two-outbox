@@ -36,6 +36,7 @@ import ch.qos.logback.core.read.ListAppender;
 import io.vanillabp.integration.adapter.migration.config.PhaseTwoOutboxProperties;
 import io.vanillabp.integration.adapter.migration.observability.VanillaBpMetrics;
 import io.vanillabp.integration.spi.PhaseOperation;
+import io.vanillabp.integration.spi.PhaseTwoBpmsBusy;
 import io.vanillabp.integration.spi.PhaseTwoRetryLater;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 
@@ -210,6 +211,47 @@ public class WaitingForTheBpmsUsesTimeNotAttemptsTest {
         .filter(event -> event.getLevel() == Level.ERROR)
         .map(ILoggingEvent::getFormattedMessage)
         .toList();
+
+  }
+
+  /**
+   * A busy BPMS answers every time, so neither the budget nor the time since the entry was
+   * written ends its wait. The entry here is older than the wait for a read model may last, and
+   * gruelbox blocked it because the attempt it counted was the last one of the budget.
+   */
+  @Test
+  @DisplayName("A busy BPMS uses no attempt and knows no time limit, and each refusal is a WARN")
+  public void aBusyBpmsUsesNoAttempt() throws Exception {
+
+    final var entry = anEntryWhoseAttemptFailed(writtenAgo(WAIT_AT_MOST.multipliedBy(2)), ATTEMPT_BUDGET);
+
+    final var beforeTheWrite = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+    listener()
+        .failure(
+            entry,
+            new PhaseTwoBpmsBusy(
+                "Phase two of a correlation was refused by adapter 'camunda8', because its BPMS reports backpressure: RESOURCE_EXHAUSTED", new IllegalStateException("RESOURCE_EXHAUSTED")));
+
+    final var row = rowOf(entry.getId());
+    assertEquals(ATTEMPT_BUDGET - 1, row.attempts(),
+        "gruelbox counted the refusal, and the listener has to take it back");
+    assertFalse(row.blocked(), "a busy BPMS must not block an entry which is fine");
+    // the attempt frequency, thirty seconds by default, spread by a fifth in both directions
+    assertFalse(row.dueAt().isBefore(beforeTheWrite.plus(Duration.ofSeconds(24))), "due too early: "
+        + row.dueAt());
+    assertFalse(row.dueAt().isAfter(Instant.now().plus(Duration.ofSeconds(36))), "due too late: "
+        + row.dueAt());
+    assertTrue(errors().isEmpty(), errors().toString());
+    assertTrue(blocks.isEmpty(), blocks.toString());
+    final var warnings = logWatcher.list
+        .stream()
+        .filter(event -> event.getLevel() == Level.WARN)
+        .map(ILoggingEvent::getFormattedMessage)
+        .toList();
+    assertEquals(1, warnings.size(), warnings.toString());
+    assertTrue(warnings.get(0).contains("met a busy BPMS"), warnings.get(0));
+    assertTrue(warnings.get(0).contains("adapter 'camunda8'"), warnings.get(0));
+    assertTrue(warnings.get(0).contains("uses none of its attempts"), warnings.get(0));
 
   }
 
