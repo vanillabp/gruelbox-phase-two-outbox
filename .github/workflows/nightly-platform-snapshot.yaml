@@ -60,7 +60,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
         with:
-          java-version: 25.0.5+8
+          java-version: 25.0.5+100000002
           distribution: temurin
           cache: maven
       # The cache above can hold a platform jar from a day this build never asks for again.
