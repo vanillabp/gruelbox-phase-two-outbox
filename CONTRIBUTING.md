@@ -166,7 +166,12 @@ request.
 The *Build and publish snapshots* workflow builds and tests every pull request. It publishes nothing
 from a branch. A red check tells you something about your change. Read the log and fix what it says.
 Do not just push again to see whether it goes away. Releases have a second workflow, which is started
-by hand with the version to release. It refuses to run while a POM still names a SNAPSHOT.
+by hand with the version to release. On its release branch it raises the platform SNAPSHOT to the
+released version, and it refuses to run while a POM still names a SNAPSHOT after that. With the
+input `train`, for example `2.0`, it signs the bundle but does not upload it. It keeps the bundle for
+the release train, which uploads several repositories to Maven Central as one deployment. See
+"Releasing several repositories as one deployment" in the README of
+[maven-release-parent](https://github.com/vanillabp/maven-release-parent).
 
 A pull request from a fork builds and tests like any other, because the snapshots it needs can be
 read without a login. It cannot publish anything, because GitHub gives it no secrets of this

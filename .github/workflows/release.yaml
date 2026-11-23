@@ -3,20 +3,30 @@ name: Release 🚀
 # Central from a release branch, it leaves a tag and a draft release behind, and it opens
 # the pull request which carries the version bump back into main.
 #
-# It cannot run while any version in a POM is a SNAPSHOT. This repository's own version is
-# set by the workflow, so a SNAPSHOT left over is a dependency on an unreleased VanillaBP,
-# which here is the platform and the BPMS double its tests boot against. Maven Central
-# refuses such a dependency, and it refuses it after the build, which is why the check below
-# ends the run before anything is signed.
+# main depends on SNAPSHOTs of the platform and the BPMS double its tests boot against,
+# until those are on Maven Central. The release sets its own version and raises those
+# dependencies to their released versions on the release branch, see "Versions in a release"
+# in the README of maven-release-parent. It cannot run while a SNAPSHOT is left after that:
+# Maven Central refuses such a dependency, and it refuses it after the build, which is why
+# the check below ends the run before anything is signed.
 "on":
   workflow_dispatch:
     inputs:
       release_version:
         description: Version to release (e.g. 1.0.0)
         required: true
+      train:
+        description: "Release train, e.g. 2.0. Empty: this release uploads to Maven Central itself. Set: the bundle is kept for release-train.yaml in maven-release-parent. Release the repositories of a train in the order of their dependencies: each release reads the bundles of the releases before it."
+        required: false
+        default: ""
 permissions:
   contents: write
   pull-requests: write
+env:
+  # release-versions.sh of maven-release-parent at a fixed commit, so a later change of the
+  # script cannot break the release of an older branch. A new version of the script comes
+  # with a pull request which moves this commit.
+  RELEASE_VERSIONS_SH: "https://raw.githubusercontent.com/vanillabp/maven-release-parent/e6c840c50e2ed95412710828df00fa194924edf6/.github/scripts/release-versions.sh"
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -74,24 +84,75 @@ jobs:
         run: |
           mvn --batch-mode --update-snapshots versions:set -DprocessAllModules=true -DnewVersion=${{ github.event.inputs.release_version }}
           find . -name pom.xml.versionsBackup -delete
-      - name: Refuse a release which depends on something unreleased
+      # A version on Maven Central never changes. Below that line nobody can use this version
+      # yet, so the steps at the end may move its tag and reuse its branch and pull request
+      # when a release of the same version runs again.
+      - name: Refuse a version which Maven Central has already
+        env:
+          VERSION: "${{ inputs.release_version }}"
         run: |
-          SNAPSHOT_POMS=$(grep -R "<.*>.*SNAPSHOT<\/.*>" . --include=pom.xml || true)
-
-          if [ -n "$SNAPSHOT_POMS" ]; then
-            echo "::error::A SNAPSHOT is left in a POM, so this release would depend on an unreleased VanillaBP. Release what it points at first (the platform, whose modules this store and its tests use), then raise the versions here:"
-            echo "$SNAPSHOT_POMS"
-            exit 1
-          fi
-          echo "✅ No SNAPSHOT dependencies found."
+          curl -fsSL -o "$RUNNER_TEMP/release-versions.sh" "$RELEASE_VERSIONS_SH"
+          bash "$RUNNER_TEMP/release-versions.sh" unpublished "$VERSION"
+      # A release train builds the bundle of each release and keeps it as an Actions artifact.
+      # release-train.yaml in maven-release-parent uploads the bundles of all repositories of
+      # a train as one deployment, because Sonatype allows only a few deployments a month.
+      # The bundles of the train which are already there go into the local Maven repository,
+      # so this build finds the versions which are not on Maven Central yet. See the README
+      # of maven-release-parent.
+      - name: Read the bundles of the release train
+        if: inputs.train != ''
+        env:
+          TRAIN: "${{ inputs.train }}"
+          LINE: "main"
+          # reads the Actions artifacts of the other repositories, which GITHUB_TOKEN cannot
+          GH_TOKEN: "${{ secrets.VANILLABP_USER_TOKEN }}"
+        run: |
+          # the shared part of a release train lives once, in maven-release-parent
+          curl -fsSL -o "$RUNNER_TEMP/release-train.sh" \
+            https://raw.githubusercontent.com/vanillabp/maven-release-parent/main/.github/scripts/release-train.sh
+          bash "$RUNNER_TEMP/release-train.sh" prepare "$TRAIN" "$LINE"
+      # main depends on SNAPSHOTs of the platform until it is on Maven Central. The release
+      # branch gets its released version here, from the bundles of the train or from Maven
+      # Central. If it is in neither place, the release stops before anything leaves this
+      # build, and the message names the repository to release first.
+      - name: Use the released versions of VanillaBP
+        env:
+          TRAIN: "${{ inputs.train }}"
+        run: bash "$RUNNER_TEMP/release-versions.sh" raise "$TRAIN"
+      # 'raise' changes io.vanillabp* only. Any other SNAPSHOT stops the release here, also one
+      # of a library from outside VanillaBP. It has to be on Maven Central first, and main has
+      # to name its released version.
+      - name: No SNAPSHOT is left
+        run: bash "$RUNNER_TEMP/release-versions.sh" no-snapshots
       - name: Build & deploy to Maven Central
         run: |
           mvn --batch-mode -Dgpg.passphrase=$GPG_PASSPHRASE \
-          clean deploy -P release,central-portal
+          $TRAIN_ARGS clean deploy -P release,central-portal
         env:
+          # builds the bundle and does not upload it. '-DskipUpload' is for a POM which
+          # configures the plugin without the property of release-parent
+          TRAIN_ARGS: "${{ inputs.train != '' && '-Dcentral.skip.upload=true -DskipUpload=true' || '' }}"
           GPG_PASSPHRASE: "${{ secrets.MAVEN_GPG_PASSPHRASE }}"
           MAVEN_USERNAME: "${{ secrets.MAVEN_CENTRAL_PORTAL_TOKEN_USER }}"
           MAVEN_PASSWORD: "${{ secrets.MAVEN_CENTRAL_PORTAL_TOKEN_PW }}"
+      - name: Pack the bundle for the release train
+        if: inputs.train != ''
+        env:
+          TRAIN: "${{ inputs.train }}"
+          LINE: "main"
+          VERSION: "${{ inputs.release_version }}"
+        run: bash "$RUNNER_TEMP/release-train.sh" pack "$TRAIN" "$LINE" "$VERSION"
+      - name: Keep the bundle for the release train
+        if: inputs.train != ''
+        uses: actions/upload-artifact@v7
+        with:
+          # one name per repository and line: a new build of the same line replaces the old
+          # one, and release-train.yaml takes the newest
+          name: "release-train-${{ inputs.train }}-${{ github.event.repository.name }}-main"
+          path: "${{ runner.temp }}/release-train/"
+          retention-days: 30
+          if-no-files-found: error
+          overwrite: true
       - name: Upload the test reports of a failed release
         if: failure()
         uses: actions/upload-artifact@v7
@@ -108,11 +169,22 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add -A
-          git commit -m "Prepare release v${{ github.event.inputs.release_version }}"
+          { echo "Prepare release v${{ inputs.release_version }}"; if [ -s "$RUNNER_TEMP/raised-versions.txt" ]; then echo; cat "$RUNNER_TEMP/raised-versions.txt"; fi; } \
+            | git commit -F -
       - name: Create Git tag
         run: |
-          git tag -a "${{ github.event.inputs.release_version }}" -m "Release ${{ github.event.inputs.release_version }}"
-          git push origin --tags
+          if git rev-parse -q --verify "refs/tags/$VERSION" > /dev/null; then
+            # Maven Central has no artifact of this version, checked before the build, so a
+            # release of the same version which runs again may move the tag
+            echo "::warning::Tag $VERSION exists already. This release moves it to this build."
+            git tag -f -a "$VERSION" -m "Release $VERSION"
+            git push --force origin "refs/tags/$VERSION"
+          else
+            git tag -a "${{ github.event.inputs.release_version }}" -m "Release ${{ github.event.inputs.release_version }}"
+            git push origin --tags
+          fi
+        env:
+          VERSION: "${{ github.event.inputs.release_version }}"
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
@@ -138,12 +210,25 @@ jobs:
         run: |
           git add -A
           git commit -m "Set next version ${{ env.NEXT_SNAPSHOT }}"
-          git push origin HEAD:release/${{ github.event.inputs.release_version }}
+          if git ls-remote --exit-code --heads origin "release/$VERSION" > /dev/null; then
+            echo "::warning::Branch release/$VERSION exists already. This release replaces it with this build."
+            git push --force origin "HEAD:release/$VERSION"
+          else
+            git push origin HEAD:release/${{ github.event.inputs.release_version }}
+          fi
+        env:
+          VERSION: "${{ github.event.inputs.release_version }}"
       - name: Create PR to merge release branch into main
         run: |
           gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
+          if [ -n "$(gh pr list --head "release/$VERSION" --state open --json number --jq '.[].number')" ]; then
+            echo "::warning::The pull request of release/$VERSION is open already. This release reuses it."
+            exit 0
+          fi
           gh pr create \
             --title "Merge release/${{ github.event.inputs.release_version }} into main" \
             --body "Automated PR to merge release branch." \
             --base main \
             --head release/${{ github.event.inputs.release_version }}
+        env:
+          VERSION: "${{ github.event.inputs.release_version }}"
