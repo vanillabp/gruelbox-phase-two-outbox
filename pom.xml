@@ -68,7 +68,7 @@
     <!-- the version the store is compiled and tested against, see the compatibility
          table in README.md -->
     <transaction-outbox.version>7.1.785</transaction-outbox.version>
-    <spring-boot.version>4.1.2</spring-boot.version>
+    <spring-boot.version>4.1.3</spring-boot.version>
     <mockito.version>5.24.0</mockito.version>
   </properties>
 
