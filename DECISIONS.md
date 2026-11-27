@@ -232,3 +232,38 @@ this repository, on a laptop and in a pull request as well.
 profile `publish-snapshots` of `pom.xml`, the comment in `pom.xml` where `maven-source-plugin` used
 to be bound, the comment at `maven-source-plugin` in the POM of each module which builds no jar, and
 the comments in `.mvn/maven.config`. None of them cites a number.
+
+### 8. The columns of gruelbox stay in the zone of the JVM
+
+The stores VanillaBP writes itself write UTC into their columns without a zone. The platform made that
+the rule for 2.0, in its own decision log. This store does not follow it for the table of gruelbox.
+
+That table belongs to the gruelbox library. The library writes `nextAttemptTime` and its other moments
+with `Timestamp.from`, which is the time of day in the zone of the JVM. The code of this store which
+reads or compares those columns (`countDispatchedEntriesPastTheirRetention` and the earliest due time)
+has to use the same convention as the library. Writing UTC there would make every comparison wrong by
+the offset of the JVM.
+
+The payload table next to it belongs to VanillaBP, and the core writes it in UTC like its other tables.
+A test which writes that table by hand uses `UtcTimestamps` of the core.
+
+So an application which runs this store on nodes in different zones has the old problem of
+`Timestamp.from` in the gruelbox table: the nodes disagree about due times by the difference of their
+zones. Run such nodes in one zone, ideally UTC.
+
+Cited in: the class javadoc of `GruelboxPhaseTwoOutbox`. The comments next to the two places which use
+the convention of gruelbox say the same in their own words.
+
+### 9. This store says that it replaces a waiting entry
+
+The platform added `PhaseTwoOutbox.canReplaceWhatIsStillWaiting()` before the SPI freezes with 2.0. An
+extension which plans calls that replace what is still waiting asks it while the application starts,
+and it ends the start where a store answers `false`. The default answers `false`.
+
+This store replaces a waiting entry the way decision 6 describes, so it answers `true`. Without the
+override, an application with this store and the Business Cockpit would not start once the Cockpit
+asks.
+
+`AYoungerCallReplacesTheWaitingOneOnGruelboxTest#theStoreSaysThatItReplaces` holds it.
+
+Cited in: the javadoc of `GruelboxPhaseTwoOutbox#canReplaceWhatIsStillWaiting`.

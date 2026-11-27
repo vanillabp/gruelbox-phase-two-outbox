@@ -100,6 +100,11 @@ import lombok.extern.slf4j.Slf4j;
  * number to watch here. The wait of a dispatch is reported for the entries which still have the
  * moment. That is every entry which was submitted right after its transaction committed (see
  * {@link GruelboxRedispatchAwareSubmitter#whenTheEntryWasWritten()}).
+ * <p>
+ * The moments in the table of gruelbox are in the zone of the JVM, because gruelbox writes them
+ * with <code>Timestamp.from</code>. The stores VanillaBP writes itself write UTC. So this store
+ * reads and compares those columns the way gruelbox writes them. See decision 8 in the
+ * repository's DECISIONS.md.
  */
 @Slf4j
 public class GruelboxPhaseTwoOutbox implements PhaseTwoOutbox {
@@ -336,6 +341,9 @@ public class GruelboxPhaseTwoOutbox implements PhaseTwoOutbox {
     try (var connection = dataSource.getConnection(); var statement = connection.prepareStatement(countExpired)) {
       statement.setBoolean(1, true);
       statement.setBoolean(2, false);
+      // in the zone of the JVM, unlike the stores VanillaBP writes itself, which write UTC.
+      // The column belongs to gruelbox, and gruelbox writes it with Timestamp.from. A
+      // comparison has to use the same convention as the writer
       statement.setTimestamp(3, Timestamp.from(Instant.now()));
       try (var resultSet = statement.executeQuery()) {
         return resultSet.next()
@@ -370,6 +378,7 @@ public class GruelboxPhaseTwoOutbox implements PhaseTwoOutbox {
         if (!resultSet.next()) {
           return null;
         }
+        // read in the zone of the JVM, because gruelbox writes its column that way
         final var earliest = resultSet.getTimestamp(1);
         return earliest == null ? null : earliest.toInstant();
       }
@@ -435,6 +444,18 @@ public class GruelboxPhaseTwoOutbox implements PhaseTwoOutbox {
       logDiscardedSchedule(call);
       return false;
     }
+
+  }
+
+  /**
+   * This store replaces a waiting entry, the way decision 6 in the repository's DECISIONS.md
+   * describes. An extension which plans replacing calls asks this at startup. See decision 9 in
+   * the repository's DECISIONS.md.
+   */
+  @Override
+  public boolean canReplaceWhatIsStillWaiting() {
+
+    return true;
 
   }
 

@@ -27,6 +27,7 @@ import com.gruelbox.transactionoutbox.Submitter;
 import com.gruelbox.transactionoutbox.TransactionOutbox;
 import com.gruelbox.transactionoutbox.TransactionOutboxListener;
 
+import io.vanillabp.integration.adapter.migration.jdbc.UtcTimestamps;
 import io.vanillabp.integration.adapter.migration.observability.VanillaBpMetrics;
 import io.vanillabp.integration.adapter.migration.outbox.JdbcPhaseTwoPayloadStore;
 import io.vanillabp.integration.config.VanillaBpConfigurationProperties;
@@ -244,7 +245,8 @@ public class GruelboxKeepsThePayloadOfABlockedEntryTest {
     }
     try (var connection = dataSource.getConnection(); var statement = connection
         .prepareStatement("UPDATE %s SET CREATED_AT = ?".formatted(payloadStore.getTableName()))) {
-      statement.setTimestamp(1, Timestamp.from(LONG_BEFORE_THE_RETENTION));
+      // the payload table is VanillaBP's own, which writes UTC, unlike the table of gruelbox
+      UtcTimestamps.write(statement, 1, LONG_BEFORE_THE_RETENTION);
       statement.executeUpdate();
     }
 
