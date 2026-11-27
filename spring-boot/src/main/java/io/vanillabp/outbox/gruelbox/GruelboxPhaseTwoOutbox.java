@@ -448,6 +448,18 @@ public class GruelboxPhaseTwoOutbox implements PhaseTwoOutbox {
   }
 
   /**
+   * This store replaces a waiting entry, the way decision 6 in the repository's DECISIONS.md
+   * describes. An extension which plans replacing calls asks this at startup. See
+   * {@code DECISIONS.pending/2218.md}.
+   */
+  @Override
+  public boolean canReplaceWhatIsStillWaiting() {
+
+    return true;
+
+  }
+
+  /**
    * A call which replaces goes the same way as any other. This is the one method which marks
    * it. The mark travels in the call, so {@link #schedule(PhaseTwoCall)} reads it where the entry
    * is written.

@@ -129,6 +129,16 @@ public class AYoungerCallReplacesTheWaitingOneOnGruelboxTest {
   }
 
   @Test
+  @DisplayName("The store says that it replaces, so an extension which plans replacing calls may start")
+  public void theStoreSaysThatItReplaces() {
+
+    assertTrue(
+        outbox.canReplaceWhatIsStillWaiting(),
+        "the gruelbox store replaces a waiting entry, and an extension asks this at startup");
+
+  }
+
+  @Test
   @DisplayName("The younger report takes the waiting row, and only it is dispatched")
   public void theYoungerReportReplacesTheWaitingOne() throws Exception {
 
