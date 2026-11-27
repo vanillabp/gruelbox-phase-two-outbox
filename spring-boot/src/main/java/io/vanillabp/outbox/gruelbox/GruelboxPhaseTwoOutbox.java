@@ -103,8 +103,8 @@ import lombok.extern.slf4j.Slf4j;
  * <p>
  * The moments in the table of gruelbox are in the zone of the JVM, because gruelbox writes them
  * with <code>Timestamp.from</code>. The stores VanillaBP writes itself write UTC. So this store
- * reads and compares those columns the way gruelbox writes them. See
- * {@code DECISIONS.pending/2217.md}.
+ * reads and compares those columns the way gruelbox writes them. See decision 8 in the
+ * repository's DECISIONS.md.
  */
 @Slf4j
 public class GruelboxPhaseTwoOutbox implements PhaseTwoOutbox {
@@ -449,8 +449,8 @@ public class GruelboxPhaseTwoOutbox implements PhaseTwoOutbox {
 
   /**
    * This store replaces a waiting entry, the way decision 6 in the repository's DECISIONS.md
-   * describes. An extension which plans replacing calls asks this at startup. See
-   * {@code DECISIONS.pending/2218.md}.
+   * describes. An extension which plans replacing calls asks this at startup. See decision 9 in
+   * the repository's DECISIONS.md.
    */
   @Override
   public boolean canReplaceWhatIsStillWaiting() {
